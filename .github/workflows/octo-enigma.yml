@@ -106,8 +106,6 @@ jobs:
         run: |
           [ -n "$MOK_KEY" ] && echo "$MOK_KEY" > data/mok/MOK.key
           [ -n "$MINISIGN_PRIVATE_KEY" ] && echo "$MINISIGN_PRIVATE_KEY" > data/octo-enigma.minisign.key
-          # /__w/octo-enigma/octo-enigma/bin/minisign -s /__w/octo-enigma/octo-enigma/data/octo-enigma.minisign.key -Sm vyos-2026.03.27-1745-rolling-generic-arm64.iso
-          # Error while loading the secret key file
           source <(sed -n '/enable programmable completion/,$p' /etc/skel/.bashrc)
           set -ex
 

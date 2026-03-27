@@ -1,2 +1,4 @@
+vyos-build/
+vyos-1x/
 data/mok/MOK.key
 data/octo-enigma.minisign.key
