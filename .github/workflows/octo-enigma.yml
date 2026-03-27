@@ -13,7 +13,7 @@ on:
         description: 'Version number (default: YYYY.MM.DD-TIMESTAMP-rolling)'
         default: ''
       builder_image:
-        description: 'Builder image (default: ghcr.io/huihuimoe/vyos-arm64-build/vyos-builder:current-arm64, official: docker.io/vyos/vyos-build:current-arm64)'
+        description: 'Builder image (default: ghcr.io/p7cq/octo-enigma/oe-builder:current-arm64, official: docker.io/vyos/vyos-build:current-arm64)'
         default: ''
 
 env:
@@ -33,7 +33,7 @@ jobs:
     container:
       # the official image too old, need to update
       # image: vyos/vyos-build:current-arm64
-      image: ${{ github.event.inputs.builder_image || 'ghcr.io/p7cq/octo-enigma/vyos-builder:current-arm64' }}
+      image: ${{ github.event.inputs.builder_image || 'ghcr.io/p7cq/octo-enigma/oe-builder:current-arm64' }}
       options: --sysctl net.ipv6.conf.lo.disable_ipv6=0 --privileged --user root
     defaults:
       run:
@@ -147,7 +147,7 @@ jobs:
           MINISIGN_PRIVATE_KEY: ${{ secrets.MINISIGN_PRIVATE_KEY }}
         run: |
           [ -n "$MOK_KEY" ] && echo "$MOK_KEY" > data/mok/MOK.key
-          [ -n "$MINISIGN_PRIVATE_KEY" ] && echo "$MINISIGN_PRIVATE_KEY" > data/huihuimoe-vyos-arm64.minisign.key
+          [ -n "$MINISIGN_PRIVATE_KEY" ] && echo "$MINISIGN_PRIVATE_KEY" > data/octo-enigma.minisign.key
 
           source <(sed -n '/enable programmable completion/,$p' /etc/skel/.bashrc)
           set -ex
@@ -202,7 +202,7 @@ jobs:
             cp data/mok/MOK.pem vyos-build/data/certificates/vyos-dev-2025-linux.pem
           fi
           # add minisign pubkey
-          cp data/huihuimoe-vyos-arm64.minisign.pub vyos-build/data/live-build-config/includes.chroot/usr/share/vyos/keys/
+          cp data/octo-enigma.minisign.pub vyos-build/data/live-build-config/includes.chroot/usr/share/vyos/keys/
 
           true
 
@@ -340,8 +340,8 @@ jobs:
           echo "generic_image_name=${GENERIC_IMAGE_NAME}" >> $GITHUB_OUTPUT
           echo "generic_image_iso=${GENERIC_IMAGE_ISO}" >> $GITHUB_OUTPUT
           # Cryptographically sign the image
-          MINISIGN_PUBKEY_FILE=$GITHUB_WORKSPACE/data/huihuimoe-vyos-arm64.minisign.pub
-          MINISIGN_SECKEY_FILE=$GITHUB_WORKSPACE/data/huihuimoe-vyos-arm64.minisign.key
+          MINISIGN_PUBKEY_FILE=$GITHUB_WORKSPACE/data/octo-enigma.minisign.pub
+          MINISIGN_SECKEY_FILE=$GITHUB_WORKSPACE/data/octo-enigma.minisign.key
           if [ -f "$MINISIGN_SECKEY_FILE" ]; then
             $GITHUB_WORKSPACE/bin/minisign -s $MINISIGN_SECKEY_FILE -Sm ${GENERIC_IMAGE_ISO}
             $GITHUB_WORKSPACE/bin/minisign -Vm ${GENERIC_IMAGE_ISO} -x ${GENERIC_IMAGE_ISO}.minisig -p $MINISIGN_PUBKEY_FILE
