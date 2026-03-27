@@ -110,67 +110,191 @@ jobs:
           set -ex
 
           ### vyos-1x
-          git clone --recursive https://github.com/vyos/vyos-1x \
-            -b current --single-branch vyos-build/scripts/package-build/vyos-1x/vyos-1x
-          # fixing unknown internal blob file
-          # i don't know what is this file and why it's not in the repo
-          # without this file, the build will failed
-          # https://github.com/vyos/vyos-1x/commit/bab186b493145ee42453196e8ef4670afc71f6f1
-          # https://github.com/vyos/vyos-1x/commit/dd5f9c19550c1f8ccb5e93bab0b604f9f9e1383e
-          cp data/reftree.cache vyos-build/scripts/package-build/vyos-1x/vyos-1x/data/reftree.cache
-          # apply patches
-          # https://github.com/vyos/vyos-1x/commit/6f0dde5f151caa47048be8ebd8dcb17b544aba97
-          patch --no-backup-if-mismatch -p1 -d vyos-build/scripts/package-build/vyos-1x/vyos-1x < data/vyos-1x-001-system_console.patch
-          # https://github.com/vyos/vyos-1x/commit/6f0dde5f151caa47048be8ebd8dcb17b544aba97
-          #patch --no-backup-if-mismatch -p1 -d vyos-build/scripts/package-build/vyos-1x/vyos-1x < data/vyos-1x-002-boot_console.patch
-          patch --no-backup-if-mismatch -p1 -d vyos-build/scripts/package-build/vyos-1x/vyos-1x < data/vyos-1x-003-increase_vyshim_init_timeout.patch
-          # https://github.com/vyos/vyos-1x/commit/6349b4785454d7dc27f66c09cc4456bc26c985f5
-          #patch --no-backup-if-mismatch -p1 -d vyos-build/scripts/package-build/vyos-1x/vyos-1x < data/vyos-1x-004-enable_telegraf_support.patch
-          # Error: OCI runtime error: crun: cannot set memory+swap limit less than the memory limit
-          patch --no-backup-if-mismatch -p1 -d vyos-build/scripts/package-build/vyos-1x/vyos-1x < data/vyos-1x-005-fix_podman_service.patch
-          patch --no-backup-if-mismatch -p1 -d vyos-build/scripts/package-build/vyos-1x/vyos-1x < data/vyos-1x-006-install-image-reserve-gap.patch
-          # https://github.com/vyos/vyos-1x/commit/1478516ae437f19ebeb7d6ff9b83dd74f8e76758
-          sed -i 's/all: clean copyright/all: clean/' vyos-build/scripts/package-build/vyos-1x/vyos-1x/Makefile
+          VYOS1X_BUILD=vyos-build/scripts/package-build/vyos-1x
+          PATCH_STAGING="$VYOS1X_BUILD/ls1046a-patches"
+          mkdir -p "$PATCH_STAGING"
+          cp data/vyos-1x-*.patch "$PATCH_STAGING"
+          cp data/reftree.cache "$PATCH_STAGING"
+          cat > "$VYOS1X_BUILD/package.toml" <<'EOF'
+          [[packages]]
+          name = "vyos-1x"
+          commit_id = "current"
+          scm_url = "https://github.com/vyos/vyos-1x.git"
+          pre_build_hook = """
+            set -ex
+            cp ../ls1046a-patches/reftree.cache data/reftree.cache
+            sed -i 's/all clean copyright/all: clean/' Makefile
+            for p in ../ls1046a-patches/vyos-1x-*.patch; do
+              patch --no-backup-if-mismatch -p1 < "$p"
+            done
+          """
+          EOF
 
           ### vyos-build
-          # add default and dhcpv4 configuration
           cp data/config.boot.default vyos-build/data/live-build-config/includes.chroot/opt/vyatta/etc/
           cp data/config.boot.dhcp vyos-build/data/live-build-config/includes.chroot/opt/vyatta/etc/
-          # fix kernel config https://github.com/vyos/vyos-build/pull/1121
-          #patch --no-backup-if-mismatch -p1 -d vyos-build < data/vyos-build-001-kernel_config.patch
-          # https://github.com/vyos/vyos-build/commit/88f11dc01bb676bf652512d6bf23ba0f10f5101f
-          #patch --no-backup-if-mismatch -p1 -d vyos-build < data/vyos-build-003-fix_hardcoded_x86_64.patch
-          # fix on https://github.com/vyos/vyos-build/commit/82a40e68c7e4b3ea45fb2bbc4a1a7cff92e41942
-          #patch --no-backup-if-mismatch -p1 -d vyos-build < data/vyos-build-004-fix_saltproject_package_url.patch
           patch --no-backup-if-mismatch -p1 -d vyos-build < data/vyos-build-005-add_vim_link.patch
-          # fix on https://github.com/vyos/vyos-build/commit/7e803f5000bd77b8cb172cf31b04146c4fc76c8a
-          #patch --no-backup-if-mismatch -p1 -d vyos-build < data/vyos-build-006-fix_kernel_sign.patch
-          # sign kernel module but donot sign vmlinuz
           patch --no-backup-if-mismatch -p1 -d vyos-build < data/vyos-build-007-no_sbsign.patch
-          # fixed by https://github.com/vyos/vyos-build/commit/5fe0c17b8c6cb8e244762dcb88eb9c0bf705d9f5
-          #patch --no-backup-if-mismatch -p1 -d vyos-build < data/vyos-build-008-fix_live_boot_initramfs_link.patch
-          # https://github.com/vyos/vyos-build/commit/ff2a5df902ca31d51eda6744c94cb257d162fcfc
-          #patch --no-backup-if-mismatch -p1 -d vyos-build < data/vyos-build-009-live_boot_serial_console_device.patch
-          # https://github.com/vyos/vyos-build/blob/fd737172f1068870fe1ededbe9b2ed4a86663acd/data/live-build-config/includes.chroot/var/lib/shim-signed/mok/README.md
+
+          ### Kernel config
+                    DEFCONFIG=vyos-build/scripts/package-build/linux-kernel/config/arm64/vyos_defconfig
+          printf '%s\n' \
+            '# === LS1046A / NXP Layerscape DPAA1 (Mono Gateway DK) ===' \
+            'CONFIG_DEVTMPFS_MOUNT=y' \
+            'CONFIG_FSL_FMAN=y' \
+            'CONFIG_FSL_DPAA=y' \
+            'CONFIG_FSL_DPAA_ETH=y' \
+            'CONFIG_FSL_DPAA_MACSEC=y' \
+            'CONFIG_FSL_XGMAC_MDIO=y' \
+            'CONFIG_PHY_FSL_LYNX_28G=y' \
+            'CONFIG_FSL_BMAN=y' \
+            'CONFIG_FSL_QMAN=y' \
+            'CONFIG_FSL_PAMU=y' \
+            'CONFIG_HWMON=y' \
+            'CONFIG_MAXLINEAR_GPHY=y' \
+            'CONFIG_MMC_SDHCI_OF_ESDHC=y' \
+            'CONFIG_FSL_EDMA=y' \
+            'CONFIG_SERIAL_OF_PLATFORM=y' \
+            'CONFIG_MTD=y' \
+            'CONFIG_MTD_SPI_NOR=y' \
+            'CONFIG_SPI=y' \
+            'CONFIG_SPI_FSL_DSPI=y' \
+            'CONFIG_SPI_FSL_QSPI=y' \
+            'CONFIG_CDX_BUS=y' \
+            '# CONFIG_DEBUG_PREEMPT is not set' \
+            'CONFIG_QORIQ_CPUFREQ=y' \
+            'CONFIG_CPU_FREQ_DEFAULT_GOV_PERFORMANCE=y' \
+            '# CONFIG_CPU_FREQ_DEFAULT_GOV_SCHEDUTIL is not set' \
+            '# === SFP support (10G copper/fiber transceivers) ===' \
+            'CONFIG_SFP=y' \
+            'CONFIG_PHYLINK=y' \
+            'CONFIG_PHY_FSL_LYNX_10G=y' \
+            'CONFIG_I2C_MUX=y' \
+            'CONFIG_I2C_MUX_PCA954x=y' \
+            'CONFIG_AQUANTIA_PHY=y' \
+            'CONFIG_REALTEK_PHY=y' \
+            '# === I2C + GPIO controllers (required for SFP I2C mux and GPIOs) ===' \
+            'CONFIG_I2C_IMX=y' \
+            'CONFIG_GPIO_MPC8XXX=y' \
+            '# === Board peripherals (fan, thermal, RTC, power sensors) ===' \
+            'CONFIG_SENSORS_EMC2305=y' \
+            'CONFIG_RTC_DRV_PCF2127=y' \
+            >> "$DEFCONFIG"
+
+          ### Remove --uefi-secure-boot from grub-install
+          find "$VYOS1X" -name '*.py' -exec \
+            grep -l 'uefi.secure.boot' {} \; | \
+            xargs -r sed -i "s/'--uefi-secure-boot'[,]\?//g" 2>/dev/null || true
+
+          ### LSI1046A console
+          sed -i 's/ttyAMA0/ttyS0/g' \
+            vyos-build/data/live-build-config/hooks/live/01-live-serial.binary \
+            vyos-build/data/live-build-config/includes.chroot/opt/vyatta/etc/grub/default-union-grub-entry \
+            2>/dev/null || true
+
           if [ -f data/mok/MOK.key ]; then
-            # https://github.com/vyos/vyos-build/commit/d552f7f8c38d7ad3bd28d9019a58b57e41b07f0b
-            # data/live-build-config/includes.chroot/var/lib/shim-signed/mok -> vyos-build/data/certificates
             cp data/mok/MOK.key vyos-build/data/certificates/vyos-dev-2025-linux.key
             cp data/mok/MOK.pem vyos-build/data/certificates/vyos-dev-2025-linux.pem
           fi
+
           # add minisign pubkey
           cp data/octo-enigma.minisign.pub vyos-build/data/live-build-config/includes.chroot/usr/share/vyos/keys/
+          mkdir -p vyos-build/data/live-build-config/includes.binary
+          cp data/dtb/mono-gw.dtb vyos-build/data/live-build-config/includes.binary/mono-gw.dtb
 
-          true
+          CHROOT=vyos-build/data/live-build-config/includes.chroot
+          mkdir -p "$CHROOT/boot"
+          cp data/dtb/mono-gw.dtb "$CHROOT/boot"
+
+          # fw
+          cp data/scrips/fw_env.config "$CHROOT/etc/fw_env.config"
+
+          ### post install
+          mkdir -p "$CHROOT/usr/local/bin"
+
+          # fan
+          cp data/scripts/fancontrol.conf "$CHROOT/etc/fancontrol"
+          cp data/scripts/fancontrol-setup.sh "$CHROOT/usr/local/bin/fancontrol-setup"
+          chmod +x "$CHROOT/usr/local/bin/fancontrol-setup"
+          # Systemd drop-in: run fancontrol-setup before fancontrol starts
+          mkdir -p "$CHROOT/etc/systemd/system/fancontrol.service.d"
+          printf '%s\n' \
+            '[Service]' \
+            'ExecStartPre=/usr/local/bin/fancontrol-setup' \
+            > "$CHROOT/etc/systemd/system/fancontrol.service.d/hwmon-setup.conf"
+
+          # Install fancontrol package and enable service (chroot hook)
+          HOOKS=vyos-build/data/live-build-config/hooks/live
+          cat > "$HOOKS/98-fancontrol.chroot" << 'FANHOOK'
+          #!/bin/bash
+          # Install fancontrol daemon for EMC2305 PWM fan control
+          # Config at /etc/fancontrol maps EMC2305 PWM to core-cluster thermal zone
+          apt-get update -qq && apt-get install -y --no-install-recommends fancontrol
+          systemctl enable fancontrol.service
+          # Enable vyos-postinstall (writes /boot/vyos.env on install/upgrade).
+          # Must be done inside chroot hook — ln -sf in includes.chroot gets
+          # dereferenced by live-build, producing empty files instead of symlinks.
+          # systemctl enable vyos-postinstall.service
+          apt-get clean
+          FANHOOK
+          chmod +x "$HOOKS/98-fancontrol.chroot"
+
+          ### Boot optimization: mask unnecessary services for LS1046A
+          # kexec masking forces full cold reboot on installed systems, ensuring
+          # DPAA1/SFP/I2C hardware re-initializes cleanly (kexec skips firmware).
+          # IMPORTANT: ln -sf /dev/null in includes.chroot gets converted to empty
+          # files by live-build (symlinks to absolute paths outside chroot are
+          # dereferenced). We use a chroot hook to create proper symlinks instead.
+          cat > "$HOOKS/99-mask-services.chroot" << 'MASKHOOK'
+          #!/bin/bash
+          # Mask kexec services: prevents kexec preloading kernel at boot
+          # (DPAA1/SFP/I2C needs full U-Boot re-init on reboot)
+          # Both SysV init scripts AND systemd units must be masked
+          ln -sf /dev/null /etc/systemd/system/kexec-load.service
+          ln -sf /dev/null /etc/systemd/system/kexec.service
+          # Remove SysV init scripts to prevent systemd-sysv-generator from
+          # creating auto-generated units that bypass our systemd masks
+          rm -f /etc/init.d/kexec-load /etc/init.d/kexec
+          # ACPI daemon is useless on ARM64/DeviceTree platforms
+          ln -sf /dev/null /etc/systemd/system/acpid.service
+          ln -sf /dev/null /etc/systemd/system/acpid.socket
+          ln -sf /dev/null /etc/systemd/system/acpid.path
+          MASKHOOK
+          chmod +x "$HOOKS/99-mask-services.chroot"
+
+          ### Ethernet port remapping: match physical port order (left to right)
+          # Mainline fsl_dpaa_mac probes in DT address order (e2000→e8000→ea000)
+          # which gives rightmost RJ45 = eth0. Physical expectation: leftmost = eth0.
+          #
+          # VyOS uses its own naming system (vyos_net_name at 65-vyos-net.rules)
+          # which overrides systemd .link files. The VyOS rule checks for
+          # ENV{VYOS_IFNAME}: if set, it's passed as "predefined" name to
+          # vyos_net_name, bypassing biosdevname. We set VYOS_IFNAME in a
+          # priority-64 rule (before 65) using DEVPATH to identify FMan MACs.
+          UDEVD="$CHROOT/etc/udev/rules.d"
+          mkdir -p "$UDEVD"
+          printf '%s\n' \
+            '# Mono Gateway LS1046A: remap FMan ethernet ports to match physical RJ45 order' \
+            '# DEVPATH contains the FMan MAC node address (always available, unlike ID_PATH)' \
+            '# Sets VYOS_IFNAME which vyos_net_name (65-vyos-net.rules) honors as "predefined"' \
+            'ACTION!="add", GOTO="fman_end"' \
+            'SUBSYSTEM!="net", GOTO="fman_end"' \
+            '# RJ45 ports (left to right facing the board)' \
+            'ENV{DEVPATH}=="*/1ae8000.ethernet/*", ENV{VYOS_IFNAME}="eth0"' \
+            'ENV{DEVPATH}=="*/1aea000.ethernet/*", ENV{VYOS_IFNAME}="eth1"' \
+            'ENV{DEVPATH}=="*/1ae2000.ethernet/*", ENV{VYOS_IFNAME}="eth2"' \
+            '# SFP+ ports (left to right)' \
+            'ENV{DEVPATH}=="*/1af0000.ethernet/*", ENV{VYOS_IFNAME}="eth3"' \
+            'ENV{DEVPATH}=="*/1af2000.ethernet/*", ENV{VYOS_IFNAME}="eth4"' \
+            'LABEL="fman_end"' \
+            > "$UDEVD/64-fman-port-order.rules"
 
       - name: Build Image Packages
         run: |
           cd vyos-build/scripts/package-build
           source <(sed -n '/enable programmable completion/,$p' /etc/skel/.bashrc)
           set -ex
-          # packages=$(ls .)
-          # packages="radvd vyos-1x linux-kernel"
-          packages="vyos-1x"
+          packages="linux-kernel vyos-1x"
           ignore_packages=(amazon-cloudwatch-agent amazon-ssm-agent xen-guest-agent)
           for package in $packages; do
             [ ! -d $package ] && continue
@@ -182,6 +306,30 @@ jobs:
             ./build.py
 
             [ $package == "keepalived" ] && apt-get remove -y libsnmp-dev
+
+            ### Build Mono Gateway DTB from kernel source (before cleanup)
+            if [ "$package" == "linux-kernel" ]; then
+              KSRC=$(find . -maxdepth 1 -type d -name 'linux-*' | head -1)
+              if [ -n "$KSRC" ] && [ -d "$KSRC/arch/arm64/boot/dts/freescale" ]; then
+                echo "### Building Mono Gateway DTB from kernel source"
+                # Copy our custom DTS into the kernel tree
+                cp "$GITHUB_WORKSPACE/data/dtb/mono-gateway-dk.dts" \
+                   "$KSRC/arch/arm64/boot/dts/freescale/mono-gateway-dk.dts"
+                # Build it using the kernel's DTS infrastructure
+                make -C "$KSRC" freescale/mono-gateway-dk.dtb 2>&1 | tail -10 || true
+                MONO_DTB="$KSRC/arch/arm64/boot/dts/freescale/mono-gateway-dk.dtb"
+                if [ -f "$MONO_DTB" ]; then
+                  # Replace the SDK-extracted DTB with our mainline-compiled one
+                  cp "$MONO_DTB" "$GITHUB_WORKSPACE/vyos-build/data/live-build-config/includes.binary/mono-gw.dtb"
+                  # Also copy into squashfs (/boot/) so install_image() auto-copies it
+                  cp "$MONO_DTB" "$GITHUB_WORKSPACE/vyos-build/data/live-build-config/includes.chroot/boot/mono-gw.dtb"
+                  echo "### Mono Gateway DTB compiled: $(stat -c '%s bytes' "$MONO_DTB")"
+                else
+                  echo "WARNING: mono-gateway-dk.dtb build failed, keeping SDK DTB"
+                  ls "$KSRC/arch/arm64/boot/dts/freescale/"*.dtb 2>/dev/null | head -5 || true
+                fi
+              fi
+            fi
 
             # clean
             df -Th
@@ -236,17 +384,6 @@ jobs:
             fi
             cp $deb_file packages
           done
-          # global_deb_files=$(find ../global_deps -name "*.deb" -type f | \
-          #   grep -v -- -dbg | \
-          #   grep -v -- -dev | \
-          #   grep -v -- -doc
-          # )
-          # for deb_file in $global_deb_files; do
-          #   cp $deb_file packages
-          # done
-          # # vpp addition files
-          # find scripts/package-build/vpp -name "libvppinfra-dev*.deb" -type f -exec cp {} packages ';'
-          # find scripts/package-build/vpp -name "vpp-dev*.deb" -type f -exec cp {} packages ';'
           ls -alh packages
 
       - name: Archive Packages
@@ -263,6 +400,13 @@ jobs:
           cd vyos-build
           source <(sed -n '/enable programmable completion/,$p' /etc/skel/.bashrc)
           set -ex
+
+          ### Copy mainline RDB DTB if built during kernel step
+          if [ -f "$GITHUB_WORKSPACE/data/dtb/fsl-ls1046a-rdb.dtb" ]; then
+            cp "$GITHUB_WORKSPACE/data/dtb/fsl-ls1046a-rdb.dtb" \
+              data/live-build-config/includes.binary/fsl-ls1046a-rdb.dtb
+            echo "### Mainline RDB DTB included in ISO"
+          fi
 
           rm -rf packages/linux-headers-*
 
@@ -285,7 +429,6 @@ jobs:
             --custom-package u-boot-tools \
             --custom-package libubootenv-tool \
             generic
-            # --custom-package cloud-init
           cd build
           # Determine image name and iso file
           GENERIC_IMAGE_NAME=$(jq --raw-output .artifacts[0] manifest.json | sed -e 's/.iso//')
@@ -413,6 +556,11 @@ jobs:
         run: |
           sudo chown -R $(whoami):$(whoami) ./*
           git pull --autostash --rebase
+          # Save version.json (modified by create-json step), pull latest, restore
+          # cp version.json /tmp/version.json.new
+          # git checkout -- version.json 2>/dev/null || true
+          # git pull --rebase || true
+          # cp /tmp/version.json.new version.json
 
       - name: "Release publishing: create autocommit and tag"
         uses: stefanzweifel/git-auto-commit-action@v7
