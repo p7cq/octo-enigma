@@ -1,0 +1,59 @@
+name: Build VyOS Rolling ISO
+
+on:
+workflow_dispatch:
+schedule:
+- cron: "0 3 * * *"   # optional: daily build
+
+jobs:
+build:
+runs-on: ubuntu-22.04
+
+```
+steps:
+  - name: Free disk space
+    run: |
+      sudo rm -rf /usr/share/dotnet
+      sudo rm -rf /opt/ghc
+      sudo rm -rf /usr/local/lib/android
+      sudo docker system prune -af || true
+
+  - name: Install dependencies
+    run: |
+      sudo apt update
+      sudo apt install -y \
+        git \
+        build-essential \
+        fakeroot \
+        devscripts \
+        equivs \
+        libtool \
+        automake \
+        autoconf \
+        pkg-config \
+        genisoimage \
+        syslinux-utils \
+        squashfs-tools \
+        curl
+
+  - name: Clone VyOS build repo
+    run: |
+      git clone https://github.com/vyos/vyos-build.git
+      cd vyos-build
+
+  - name: Build VyOS rolling ISO
+    run: |
+      cd vyos-build
+      sudo ./build-vyos-image \
+        --architecture amd64 \
+        --build-type release \
+        --version rolling \
+        --build-by "github-actions"
+
+  - name: Upload ISO artifact
+    uses: actions/upload-artifact@v4
+    with:
+      name: vyos-rolling-iso
+      path: vyos-build/build/live-image-amd64.hybrid.iso
+```
+
