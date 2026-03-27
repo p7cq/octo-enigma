@@ -1,56 +1,506 @@
-name: Build VyOS Rolling ISO
+name: Octo Enigma
 
 on:
   schedule:
-    - cron: "0 3 * * *"   # optional: daily build
+    - cron: "0 1 * * 5"
 
-workflow_dispatch:
-build:
-runs-on: ubuntu-22.04
+  workflow_dispatch:
+    inputs:
+      BUILD_BY:
+        description: 'p7cq'
+        default: ''
+      build_version:
+        description: 'Version number (default: YYYY.MM.DD-TIMESTAMP-rolling)'
+        default: ''
+      builder_image:
+        description: 'Builder image (default: ghcr.io/huihuimoe/vyos-arm64-build/vyos-builder:current-arm64, official: docker.io/vyos/vyos-build:current-arm64)'
+        default: ''
+
+env:
+  DEBIAN_MIRROR: http://deb.debian.org/debian/
+  DEBIAN_SECURITY_MIRROR: http://deb.debian.org/debian-security
+  # ~~no package on the official repo~~ fixed
+  VYOS_MIRROR: https://packages.vyos.net/repositories/current/
+  # this repo doesn't seem to be updated anymore
+  # https://dev.packages.vyos.net/?dir=repositories/current/dists/current
+  # VYOS_MIRROR: https://rolling-packages.vyos.net/current/
 
 jobs:
-  steps:
-    - name: Free disk space
-      run: |
-        sudo rm -rf /usr/share/dotnet
-        sudo rm -rf /opt/ghc
-        sudo rm -rf /usr/local/lib/android
-        sudo docker system prune -af || true
+  build_generic_iso:
+    runs-on: ubuntu-24.04-arm
+    permissions:
+      contents: write
+    container:
+      # the official image too old, need to update
+      # image: vyos/vyos-build:current-arm64
+      image: ${{ github.event.inputs.builder_image || 'ghcr.io/huihuimoe/vyos-arm64-build/vyos-builder:current-arm64' }}
+      options: --sysctl net.ipv6.conf.lo.disable_ipv6=0 --privileged --user root
+    defaults:
+      run:
+        shell: bash
+    outputs:
+      BUILD_BY: ${{ steps.set_env_variables.outputs.BUILD_BY }}
+      build_version: ${{ steps.set_env_variables.outputs.build_version }}
+      TIMESTAMP: ${{ steps.set_env_variables.outputs.TIMESTAMP }}
+      PREVIOUS_SUCCESS_BUILD_TIMESTAMP: ${{ steps.set_env_variables.outputs.PREVIOUS_SUCCESS_BUILD_TIMESTAMP }}
+      generic_image_iso: ${{ steps.build_generic_iso.outputs.generic_image_iso }}
+      generic_image_name: ${{ steps.build_generic_iso.outputs.generic_image_name }}
 
-    - name: Install dependencies
-      run: |
-        sudo apt update
-        sudo apt install -y \
-          git \
-          build-essential \
-          fakeroot \
-          devscripts \
-          equivs \
-          libtool \
-          automake \
-          autoconf \
-          pkg-config \
-          genisoimage \
-          syslinux-utils \
-          squashfs-tools \
-          curl
+    steps:
+      - name: Install Dependencies
+        run: |
+          source <(sed -n '/enable programmable completion/,$p' /etc/skel/.bashrc)
+          set -ex
+          echo "HOME: $HOME"
+          echo "PATH: $PATH"
+          command -v go
+          command -v opam
+          lscpu
+          free -m
+          # Install missing packages
+          apt-get update -qq
+          apt-get install -y \
+            libsystemd-dev libglib2.0-dev libip4tc-dev libipset-dev libnfnetlink-dev \
+            libnftnl-dev libnl-nf-3-dev libpopt-dev libpcap-dev libbpf-dev \
+            bubblewrap git-lfs kpartx clang llvm cmake \
+            protobuf-compiler python3-cracklib python3-protobuf \
+            libreadline-dev liblua5.3-dev byacc flex
+          # python3-cracklib: https://github.com/vyos/vyos-build/commit/e846e68f9f6457865f3e3af92adfe42933555c59
+          # protobuf-compiler: https://github.com/vyos/vyos-build/commit/0a6c197226400c4bbe210b435baaa716d4fb8377
+          # python3-protobuf: https://github.com/vyos/vyos-build/commit/dd2c245be73c1e83b6ca392924aa549f77c5586e
+          apt-get upgrade -y
 
-    - name: Clone VyOS build repo
-      run: |
-        git clone https://github.com/vyos/vyos-build.git
-        cd vyos-build
+      - uses: actions/checkout@v6
+        with:
+          lfs: true
+      - name: "Initialization: set env variables"
+        id: set_env_variables
+        run: |
+          source <(sed -n '/enable programmable completion/,$p' /etc/skel/.bashrc)
+          set -ex
+          if [ -n "${{ github.event.inputs.BUILD_BY }}" ]; then
+            echo "BUILD_BY=${{ github.event.inputs.BUILD_BY }}" >> $GITHUB_ENV
+            echo "BUILD_BY=${{ github.event.inputs.BUILD_BY }}" >> $GITHUB_OUTPUT
+          else
+            echo "BUILD_BY=${{ github.repository_owner_id }}+${{ github.repository_owner }}@users.noreply.github.com" >> $GITHUB_ENV
+            echo "BUILD_BY=${{ github.repository_owner_id }}+${{ github.repository_owner }}@users.noreply.github.com" >> $GITHUB_OUTPUT
+          fi
+          if [ -z "${{ github.event.inputs.build_version }}" ]; then
+            echo "build_version=$(date -u +%Y.%m.%d-%H%M)-rolling" >> $GITHUB_OUTPUT
+          else
+            echo "build_version=${{ github.event.inputs.build_version }}" >> $GITHUB_OUTPUT
+          fi
+          echo "TIMESTAMP=$(date -u +%Y-%m-%dT%H:%M:%SZ)" >> $GITHUB_OUTPUT
+          echo "PREVIOUS_SUCCESS_BUILD_TIMESTAMP=$(cat version.json | jq -r '.[0].timestamp')" >> $GITHUB_OUTPUT
 
-    - name: Build VyOS rolling ISO
-      run: |
-        cd vyos-build
-        sudo ./build-vyos-image \
-          --architecture amd64 \
-          --build-type release \
-          --version rolling \
-          --build-by "github-actions"
+      # - name: Build global deps
+      #   run: |
+      #     source <(sed -n '/enable programmable completion/,$p' /etc/skel/.bashrc)
+      #     set -ex
+      #     eval $(opam env --root=/opt/opam --set-root)
+      #     mkdir global_deps
+      #     cd global_deps
+      #     global_deps=(
+      #       libvyosconfig
+      #       vyatta-bash
+      #       vyatta-biosdevname
+      #       vyatta-cfg
+      #       # https://github.com/vyos/vyos-1x/commit/d6a82c134bed0b0921595928b7ec600b2935327b
+      #       # vyatta-wanloadbalance
+      #       vyos-utils
+      #       # Architecture:all, can install directly
+      #       # vyos-user-utils
+      #       vyos-http-api-tools
+      #       # Architecture:all, can install directly
+      #       # vyos-cloud-init
+      #       ipaddrcheck
+      #       udp-broadcast-relay
+      #       hvinfo
+      #       # Architecture:all, can install directly
+      #       # live-boot
+      #     )
+      #     for global_dep in ${global_deps[@]}; do
+      #       git clone https://github.com/vyos/$global_dep
+      #       cd $global_dep
+      #       echo "y" | mk-build-deps --install --remove
+      #       # should update libvyosconfig due to hardcode on vyos-1x
+      #       # https://github.com/vyos/vyos-1x/blob/e90a2781f9eae555097e078b9b11dd0dca6c0acd/python/vyos/configtree.py#L22
+      #       # that will failed on reftree.cache
+      #       # 2025.03.05: fixed on https://github.com/vyos/vyos-1x/commit/731195c7adb21208767199f5487dfdf29ce09380
+      #       # if [ "${global_dep}" = "libvyosconfig" ]; then
+      #       #   ./build.sh
+      #       #   cp _build/libvyosconfig.so /usr/lib/libvyosconfig.so.0
+      #       # fi
+      #       dpkg-buildpackage -b -us -uc -tc
+      #       cd ..
+      #     done
 
-    - name: Upload ISO artifact
-      uses: actions/upload-artifact@v4
-      with:
-        name: vyos-rolling-iso
-        path: vyos-build/build/live-image-amd64.hybrid.iso
+      - name: Checkout vyos-build repo
+        uses: actions/checkout@v6
+        with:
+          repository: vyos/vyos-build
+          path: vyos-build
+
+      - name: Fix vyos-build
+        env:
+          MOK_KEY: ${{ secrets.MOK_KEY }}
+          MINISIGN_PRIVATE_KEY: ${{ secrets.MINISIGN_PRIVATE_KEY }}
+        run: |
+          [ -n "$MOK_KEY" ] && echo "$MOK_KEY" > data/mok/MOK.key
+          [ -n "$MINISIGN_PRIVATE_KEY" ] && echo "$MINISIGN_PRIVATE_KEY" > data/huihuimoe-vyos-arm64.minisign.key
+
+          source <(sed -n '/enable programmable completion/,$p' /etc/skel/.bashrc)
+          set -ex
+
+          ### vyos-1x
+          git clone --recursive https://github.com/vyos/vyos-1x \
+            -b current --single-branch vyos-build/scripts/package-build/vyos-1x/vyos-1x
+          # fixing unknown internal blob file
+          # i don't know what is this file and why it's not in the repo
+          # without this file, the build will failed
+          # https://github.com/vyos/vyos-1x/commit/bab186b493145ee42453196e8ef4670afc71f6f1
+          # https://github.com/vyos/vyos-1x/commit/dd5f9c19550c1f8ccb5e93bab0b604f9f9e1383e
+          cp data/reftree.cache vyos-build/scripts/package-build/vyos-1x/vyos-1x/data/reftree.cache
+          # apply patches
+          # https://github.com/vyos/vyos-1x/commit/6f0dde5f151caa47048be8ebd8dcb17b544aba97
+          patch --no-backup-if-mismatch -p1 -d vyos-build/scripts/package-build/vyos-1x/vyos-1x < data/vyos-1x-001-system_console.patch
+          # https://github.com/vyos/vyos-1x/commit/6f0dde5f151caa47048be8ebd8dcb17b544aba97
+          #patch --no-backup-if-mismatch -p1 -d vyos-build/scripts/package-build/vyos-1x/vyos-1x < data/vyos-1x-002-boot_console.patch
+          patch --no-backup-if-mismatch -p1 -d vyos-build/scripts/package-build/vyos-1x/vyos-1x < data/vyos-1x-003-increase_vyshim_init_timeout.patch
+          # https://github.com/vyos/vyos-1x/commit/6349b4785454d7dc27f66c09cc4456bc26c985f5
+          #patch --no-backup-if-mismatch -p1 -d vyos-build/scripts/package-build/vyos-1x/vyos-1x < data/vyos-1x-004-enable_telegraf_support.patch
+          # Error: OCI runtime error: crun: cannot set memory+swap limit less than the memory limit
+          patch --no-backup-if-mismatch -p1 -d vyos-build/scripts/package-build/vyos-1x/vyos-1x < data/vyos-1x-005-fix_podman_service.patch
+          patch --no-backup-if-mismatch -p1 -d vyos-build/scripts/package-build/vyos-1x/vyos-1x < data/vyos-1x-006-install-image-reserve-gap.patch
+          # https://github.com/vyos/vyos-1x/commit/1478516ae437f19ebeb7d6ff9b83dd74f8e76758
+          sed -i 's/all: clean copyright/all: clean/' vyos-build/scripts/package-build/vyos-1x/vyos-1x/Makefile
+
+          ### vyos-build
+          # add default and dhcpv4 configuration
+          cp data/config.boot.default vyos-build/data/live-build-config/includes.chroot/opt/vyatta/etc/
+          cp data/config.boot.dhcp vyos-build/data/live-build-config/includes.chroot/opt/vyatta/etc/
+          # fix kernel config https://github.com/vyos/vyos-build/pull/1121
+          #patch --no-backup-if-mismatch -p1 -d vyos-build < data/vyos-build-001-kernel_config.patch
+          # https://github.com/vyos/vyos-build/commit/88f11dc01bb676bf652512d6bf23ba0f10f5101f
+          #patch --no-backup-if-mismatch -p1 -d vyos-build < data/vyos-build-003-fix_hardcoded_x86_64.patch
+          # fix on https://github.com/vyos/vyos-build/commit/82a40e68c7e4b3ea45fb2bbc4a1a7cff92e41942
+          #patch --no-backup-if-mismatch -p1 -d vyos-build < data/vyos-build-004-fix_saltproject_package_url.patch
+          patch --no-backup-if-mismatch -p1 -d vyos-build < data/vyos-build-005-add_vim_link.patch
+          # fix on https://github.com/vyos/vyos-build/commit/7e803f5000bd77b8cb172cf31b04146c4fc76c8a
+          #patch --no-backup-if-mismatch -p1 -d vyos-build < data/vyos-build-006-fix_kernel_sign.patch
+          # sign kernel module but donot sign vmlinuz
+          patch --no-backup-if-mismatch -p1 -d vyos-build < data/vyos-build-007-no_sbsign.patch
+          # fixed by https://github.com/vyos/vyos-build/commit/5fe0c17b8c6cb8e244762dcb88eb9c0bf705d9f5
+          #patch --no-backup-if-mismatch -p1 -d vyos-build < data/vyos-build-008-fix_live_boot_initramfs_link.patch
+          # https://github.com/vyos/vyos-build/commit/ff2a5df902ca31d51eda6744c94cb257d162fcfc
+          #patch --no-backup-if-mismatch -p1 -d vyos-build < data/vyos-build-009-live_boot_serial_console_device.patch
+          # https://github.com/vyos/vyos-build/blob/fd737172f1068870fe1ededbe9b2ed4a86663acd/data/live-build-config/includes.chroot/var/lib/shim-signed/mok/README.md
+          if [ -f data/mok/MOK.key ]; then
+            # https://github.com/vyos/vyos-build/commit/d552f7f8c38d7ad3bd28d9019a58b57e41b07f0b
+            # data/live-build-config/includes.chroot/var/lib/shim-signed/mok -> vyos-build/data/certificates
+            cp data/mok/MOK.key vyos-build/data/certificates/vyos-dev-2025-linux.key
+            cp data/mok/MOK.pem vyos-build/data/certificates/vyos-dev-2025-linux.pem
+          fi
+          # add minisign pubkey
+          cp data/huihuimoe-vyos-arm64.minisign.pub vyos-build/data/live-build-config/includes.chroot/usr/share/vyos/keys/
+
+          true
+
+      - name: Build Image Packages
+        run: |
+          cd vyos-build/scripts/package-build
+          source <(sed -n '/enable programmable completion/,$p' /etc/skel/.bashrc)
+          set -ex
+          # packages=$(ls .)
+          # packages="radvd vyos-1x linux-kernel"
+          packages="vyos-1x"
+          ignore_packages=(amazon-cloudwatch-agent amazon-ssm-agent xen-guest-agent)
+          for package in $packages; do
+            [ ! -d $package ] && continue
+            [[ " ${ignore_packages[@]} " =~ " ${package} " ]] && continue
+            cd $package
+
+            [ $package == "keepalived" ] && apt-get install -y libsnmp-dev
+
+            ./build.py
+
+            [ $package == "keepalived" ] && apt-get remove -y libsnmp-dev
+
+            # clean
+            df -Th
+            apt-get autoremove -y
+            rm -rf $package *.gz *.xz $HOME/.cache/go-build $HOME/go/pkg/mod $HOME/.rustup
+            df -Th
+            cd ..
+          done
+
+      - name: Pick Packages
+        run: |
+          cd vyos-build
+          source <(sed -n '/enable programmable completion/,$p' /etc/skel/.bashrc)
+          deb_files=$(find scripts/package-build -name "*.deb" -type f | \
+            grep -v -- -dbg | \
+            grep -v -- -dev | \
+            grep -v -- -doc
+          )
+          ignore_packages=(
+            charon-cmd
+            dropbear-initramfs
+            dropbear-run
+            eapoltest
+            frr-test-tools
+            isc-dhcp-client-ddns
+            isc-dhcp-common
+            isc-dhcp-keama
+            isc-dhcp-server
+            isc-dhcp-server-ldap
+            libnetsnmptrapd40
+            libsnmp-perl
+            libtac2-bin
+            libyang-modules
+            libyang-tools
+            # python3-nftables
+            rtr-tools
+            sflowovsd.deb
+            snmptrapd
+            strongswan-nm
+            strongswan-pki
+            tkmib
+            waagent
+            wide-dhcpv6-relay
+            wide-dhcpv6-server
+            vpp-plugin-devtools
+            accel-ppp
+          )
+          for deb_file in $deb_files; do
+            if [[ " ${ignore_packages[@]} " =~ " $(basename $deb_file | cut -d_ -f1) " ]]; then
+              echo "ignore $deb_file"
+              continue
+            fi
+            cp $deb_file packages
+          done
+          # global_deb_files=$(find ../global_deps -name "*.deb" -type f | \
+          #   grep -v -- -dbg | \
+          #   grep -v -- -dev | \
+          #   grep -v -- -doc
+          # )
+          # for deb_file in $global_deb_files; do
+          #   cp $deb_file packages
+          # done
+          # # vpp addition files
+          # find scripts/package-build/vpp -name "libvppinfra-dev*.deb" -type f -exec cp {} packages ';'
+          # find scripts/package-build/vpp -name "vpp-dev*.deb" -type f -exec cp {} packages ';'
+          ls -alh packages
+
+      - name: Archive Packages
+        uses: actions/upload-artifact@v7
+        with:
+          name: vyos-packages
+          path: vyos-build/packages/
+          retention-days: 30
+          compression-level: 0
+
+      - name: Build generic ISO image
+        id: build_generic_iso
+        run: |
+          cd vyos-build
+          source <(sed -n '/enable programmable completion/,$p' /etc/skel/.bashrc)
+          set -ex
+
+          rm -rf packages/linux-headers-*
+
+          ./build-vyos-image \
+            --architecture arm64 \
+            --build-by $BUILD_BY \
+            --build-type release \
+            --debian-mirror $DEBIAN_MIRROR \
+            --debian-security-mirror $DEBIAN_SECURITY_MIRROR \
+            --version ${{ steps.set_env_variables.outputs.build_version }} \
+            --vyos-mirror $VYOS_MIRROR \
+            --custom-package vim-tiny \
+            --custom-package neofetch \
+            --custom-package tree \
+            --custom-package btop \
+            --custom-package ripgrep \
+            --custom-package wget \
+            --custom-package ncdu \
+            --custom-package fastnetmon \
+            --custom-package containernetworking-plugins \
+            --custom-package qemu-guest-agent \
+            --custom-package mokutil \
+            --custom-package sbsigntool \
+            --custom-package grub-efi-arm64-signed \
+            --custom-package shim-signed \
+            generic
+            # --custom-package cloud-init
+          cd build
+          # Determine image name and iso file
+          GENERIC_IMAGE_NAME=$(jq --raw-output .artifacts[0] manifest.json | sed -e 's/.iso//')
+          GENERIC_IMAGE_ISO=$(jq --raw-output .artifacts[0] manifest.json)
+          echo "generic_image_name=${GENERIC_IMAGE_NAME}" >> $GITHUB_OUTPUT
+          echo "generic_image_iso=${GENERIC_IMAGE_ISO}" >> $GITHUB_OUTPUT
+          # Cryptographically sign the image
+          MINISIGN_PUBKEY_FILE=$GITHUB_WORKSPACE/data/huihuimoe-vyos-arm64.minisign.pub
+          MINISIGN_SECKEY_FILE=$GITHUB_WORKSPACE/data/huihuimoe-vyos-arm64.minisign.key
+          if [ -f "$MINISIGN_SECKEY_FILE" ]; then
+            $GITHUB_WORKSPACE/bin/minisign -s $MINISIGN_SECKEY_FILE -Sm ${GENERIC_IMAGE_ISO}
+            $GITHUB_WORKSPACE/bin/minisign -Vm ${GENERIC_IMAGE_ISO} -x ${GENERIC_IMAGE_ISO}.minisig -p $MINISIGN_PUBKEY_FILE
+          else
+            # create a non-zero file to indicate failure
+            echo "fake sign" > ${GENERIC_IMAGE_ISO}.minisig
+          fi
+          # Move artifacts to workspace to avoid nested path in artifact archive
+          mv manifest.json ${GENERIC_IMAGE_ISO} ${GENERIC_IMAGE_ISO}.minisig $GITHUB_WORKSPACE
+
+      - uses: actions/upload-artifact@v7
+        with:
+          name: ${{ steps.build_generic_iso.outputs.generic_image_name }}
+          path: |
+            manifest.json
+            ${{ steps.build_generic_iso.outputs.generic_image_iso }}
+            ${{ steps.build_generic_iso.outputs.generic_image_iso }}.minisig
+          retention-days: 15
+          if-no-files-found: error
+          compression-level: 0
+
+  publish:
+    needs:
+      - build_generic_iso
+    runs-on: ubuntu-24.04
+    permissions:
+      contents: write
+    # if: github.ref_name == "${{ github.event.repository.default_branch }}"
+    if: github.ref_name == 'master'
+    steps:
+      - uses: actions/checkout@v6
+      - name: Clone vyos-build repo
+        uses: actions/checkout@v6
+        with:
+          repository: vyos/vyos-build
+          path: vyos-build
+          fetch-depth: 0
+      - name: Clone vyos-1x source code
+        uses: actions/checkout@v6
+        with:
+          repository: vyos/vyos-1x
+          path: vyos-1x
+          fetch-depth: 0
+      - id: commit_ids
+        name: Get commit IDs for changelog
+        run: |
+          set -ex
+          cd vyos-build
+          git log --since "${{ needs.build_generic_iso.outputs.PREVIOUS_SUCCESS_BUILD_TIMESTAMP }}" --format="%H" --reverse
+          CHANGELOG_COMMIT_VYOS_BUILD=$(git log --since "${{ needs.build_generic_iso.outputs.PREVIOUS_SUCCESS_BUILD_TIMESTAMP }}" --format="%H" --reverse | head -n1)
+          [ -z "$CHANGELOG_COMMIT_VYOS_BUILD" ] && CHANGELOG_COMMIT_VYOS_BUILD="HEAD"
+          echo "CHANGELOG_COMMIT_VYOS_BUILD=${CHANGELOG_COMMIT_VYOS_BUILD}" >> $GITHUB_OUTPUT
+          cd ../vyos-1x
+          git log --since "${{ needs.build_generic_iso.outputs.PREVIOUS_SUCCESS_BUILD_TIMESTAMP }}" --format="%H" --reverse
+          CHANGELOG_COMMIT_VYOS_1X=$(git log --since "${{ needs.build_generic_iso.outputs.PREVIOUS_SUCCESS_BUILD_TIMESTAMP }}" --format="%H" --reverse | head -n1)
+          [ -z "$COMMIT_VYOS_1X" ] && COMMIT_VYOS_1X="HEAD"
+          echo "CHANGELOG_COMMIT_VYOS_1X=${CHANGELOG_COMMIT_VYOS_1X}" >> $GITHUB_OUTPUT
+
+      - name: "Release publishing: generate changelog for vyos-1x"
+        id: generate_changelog_for_vyos-1x
+        uses: mikepenz/release-changelog-builder-action@v6.1.1
+        with:
+          owner: "vyos"
+          repo: "vyos-1x"
+          fetchReviewers: false
+          fromTag: ${{ steps.commit_ids.outputs.CHANGELOG_COMMIT_VYOS_1X }}
+          toTag: HEAD
+          configurationJson: |
+            {
+              "categories": [{"title": "", "labels": []}],
+              "template": "#{{CHANGELOG}}",
+              "pr_template": "- #{{TITLE}}\n   - PR: vyos/vyos-1x##{{NUMBER}}"
+            }
+
+      - name: "Release publishing: generate changelog for vyos-build"
+        id: generate_changelog_for_vyos-build
+        uses: mikepenz/release-changelog-builder-action@v6.1.1
+        with:
+          owner: "vyos"
+          repo: "vyos-build"
+          fetchReviewers: false
+          fromTag: ${{ steps.commit_ids.outputs.CHANGELOG_COMMIT_VYOS_BUILD }}
+          toTag: HEAD
+          configurationJson: |
+            {
+              "categories": [{"title": "", "labels": []}],
+              "template": "#{{CHANGELOG}}",
+              "pr_template": "- #{{TITLE}}\n   - PR: vyos/vyos-build##{{NUMBER}}"
+            }
+
+      - name: "Release publishing: generate CHANGELOG.md"
+        run: |
+          cat <<EOF > CHANGELOG.md
+          ## vyos-1x
+          ${{ steps.generate_changelog_for_vyos-1x.outputs.changelog }}
+          ## vyos-build
+          ${{ steps.generate_changelog_for_vyos-build.outputs.changelog }}
+          EOF
+          cat CHANGELOG.md
+
+      - name: "Release publishing: create version.json"
+        uses: jsdaniell/create-json@v1.2.3
+        with:
+          name: "version.json"
+          json: |
+            [
+              {
+                "url": "https://github.com/${{ github.repository }}/releases/download/${{ needs.build_generic_iso.outputs.build_version }}/${{ needs.build_generic_iso.outputs.generic_image_iso }}",
+                "version": "${{ needs.build_generic_iso.outputs.build_version }}",
+                "timestamp": "${{ needs.build_generic_iso.outputs.TIMESTAMP }}"
+              }
+            ]
+
+      - name: "Release publishing: check if the repository was modified during runtime to prevent autocommit failure"
+        id: check_if_the_repository_was_modified_during_runtime
+        run: |
+          sudo chown -R $(whoami):$(whoami) ./*
+          git pull --autostash --rebase
+
+      - name: "Release publishing: create autocommit and tag"
+        uses: stefanzweifel/git-auto-commit-action@v7
+        with:
+          tagging_message: ${{ needs.build_generic_iso.outputs.build_version }}
+          commit_message: ${{ needs.build_generic_iso.outputs.build_version }}
+          commit_author: "github-actions[bot] <41898282+github-actions[bot]@users.noreply.github.com>"
+
+      - uses: actions/download-artifact@v8
+        with:
+          name: ${{ needs.build_generic_iso.outputs.generic_image_name }}
+
+      # https://github.com/actions/download-artifact/issues/374
+      # - uses: actions/download-artifact@v5
+      #   with:
+      #     name: vyos-packages
+      #     decompress: false
+      - uses: actions/download-artifact@v8
+        with:
+          name: vyos-packages
+          path: packages
+      - name: archive packages
+        run: |
+          set -ex
+          tar -cvf vyos-packages.tar packages
+          ls -alh vyos-packages.tar packages
+
+      - name: "Release publishing: publish release"
+        uses: softprops/action-gh-release@v2
+        with:
+          body_path: CHANGELOG.md
+          tag_name: ${{ needs.build_generic_iso.outputs.build_version }}
+          fail_on_unmatched_files: true
+          files: |
+            ${{ needs.build_generic_iso.outputs.generic_image_iso }}
+            ${{ needs.build_generic_iso.outputs.generic_image_iso }}.minisig
+            vyos-packages.tar
+
+      - uses: dev-drprasad/delete-older-releases@v0.3.4
+        with:
+          keep_latest: 10
+          delete_tags: true
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
