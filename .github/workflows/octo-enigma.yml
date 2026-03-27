@@ -9,7 +9,6 @@ jobs:
 build:
 runs-on: ubuntu-22.04
 
-```
 steps:
   - name: Free disk space
     run: |
@@ -55,5 +54,3 @@ steps:
     with:
       name: vyos-rolling-iso
       path: vyos-build/build/live-image-amd64.hybrid.iso
-```
-
