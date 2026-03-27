@@ -207,7 +207,7 @@ jobs:
           cp data/dtb/mono-gw.dtb "$CHROOT/boot"
 
           # fw
-          cp data/scrips/fw_env.config "$CHROOT/etc/fw_env.config"
+          cp data/scripts/fw_env.config "$CHROOT/etc/fw_env.config"
 
           ### post install
           mkdir -p "$CHROOT/usr/local/bin"
