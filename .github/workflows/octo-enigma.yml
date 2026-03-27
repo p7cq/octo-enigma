@@ -137,7 +137,7 @@ jobs:
           patch --no-backup-if-mismatch -p1 -d vyos-build < data/vyos-build-007-no_sbsign.patch
 
           ### Kernel config
-                    DEFCONFIG=vyos-build/scripts/package-build/linux-kernel/config/arm64/vyos_defconfig
+          DEFCONFIG=vyos-build/scripts/package-build/linux-kernel/config/arm64/vyos_defconfig
           printf '%s\n' \
             '# === LS1046A / NXP Layerscape DPAA1 (Mono Gateway DK) ===' \
             'CONFIG_DEVTMPFS_MOUNT=y' \
@@ -182,7 +182,7 @@ jobs:
             >> "$DEFCONFIG"
 
           ### Remove --uefi-secure-boot from grub-install
-          find "$VYOS1X" -name '*.py' -exec \
+          find "$VYOS1X_BUILD" -name '*.py' -exec \
             grep -l 'uefi.secure.boot' {} \; | \
             xargs -r sed -i "s/'--uefi-secure-boot'[,]\?//g" 2>/dev/null || true
 
