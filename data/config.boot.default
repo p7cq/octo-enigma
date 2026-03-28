@@ -2,7 +2,7 @@ system {
     host-name mono
     login {
         banner {
-            pre-login "\\n:: VyOS for NXP LS1046A (Mono Gateway) ::\\n"
+            pre-login "\n:: VyOS for NXP LS1046A (Mono Gateway) ::\n"
         }
         user vyos {
             authentication {

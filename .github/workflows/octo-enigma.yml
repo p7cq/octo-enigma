@@ -184,7 +184,7 @@ jobs:
             'CONFIG_SENSORS_EMC2305=y' \
             'CONFIG_RTC_DRV_PCF2127=y' \
             >> "$DEFCONFIG"
-          # zcat /proc/config.gz | grep -E 'CONFIG_SPI_NXP_FSL_QUADSPI|CONFIG_SPI_FSL_QUADSPI|CONFIG_MTD_M25P80|CONFIG_MTD_CHAR'
+
           ### Remove --uefi-secure-boot from grub-install
           find "$VYOS1X_BUILD" -name '*.py' -exec \
             grep -l 'uefi.secure.boot' {} \; | \
@@ -216,6 +216,31 @@ jobs:
           ### post install
           mkdir -p "$CHROOT/usr/local/bin"
 
+          ### Post-install helper: writes /boot/vyos.env + one-time U-Boot env setup
+          mkdir -p "$CHROOT/usr/local/bin"
+          cp data/scripts/vyos-postinstall "$CHROOT/usr/local/bin/vyos-postinstall"
+          chmod +x "$CHROOT/usr/local/bin/vyos-postinstall"
+
+          ### Safety net: run vyos-postinstall on every boot to sync vyos.env
+          # Ensures /boot/vyos.env matches the running image even if the
+          # image_installer.py hook (patch 011) was bypassed. Also handles
+          # one-time U-Boot fw_setenv on first boot. No-op on non-LS1046A.
+          printf '%s\n' \
+            '[Unit]' \
+            'Description=Sync /boot/vyos.env with running VyOS image (LS1046A)' \
+            'After=local-fs.target' \
+            'ConditionPathExists=/proc/device-tree/compatible' \
+            '' \
+            '[Service]' \
+            'Type=oneshot' \
+            'ExecStart=/usr/local/bin/vyos-postinstall' \
+            'RemainAfterExit=yes' \
+            'StandardOutput=journal' \
+            '' \
+            '[Install]' \
+            'WantedBy=multi-user.target' \
+            > "$CHROOT/etc/systemd/system/vyos-postinstall.service"
+
           # fan
           cp data/scripts/fancontrol.conf "$CHROOT/etc/fancontrol"
           cp data/scripts/fancontrol-setup.sh "$CHROOT/usr/local/bin/fancontrol-setup"
@@ -241,7 +266,7 @@ jobs:
           # systemctl enable vyos-postinstall.service
           apt-get clean
           FANHOOK
-          chmod +x "$HOOKS/98-fancontrol.chroot"
+          # chmod +x "$HOOKS/98-fancontrol.chroot"
 
           ### Boot optimization: mask unnecessary services for LS1046A
           # kexec masking forces full cold reboot on installed systems, ensuring
@@ -432,6 +457,7 @@ jobs:
             --custom-package shim-signed \
             --custom-package u-boot-tools \
             --custom-package libubootenv-tool \
+            --custom-package xxd \
             generic
           cd build
           # Determine image name and iso file
