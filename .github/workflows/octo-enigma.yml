@@ -110,6 +110,9 @@ jobs:
           set -ex
 
           ### vyos-1x
+          # IMPORTANT: build.py does `git checkout current` which reverts any direct
+          # patches applied to the cloned repo. We use pre_build_hook to apply patches
+          # AFTER checkout, before dpkg-buildpackage.
           VYOS1X_BUILD=vyos-build/scripts/package-build/vyos-1x
           PATCH_STAGING="$VYOS1X_BUILD/ls1046a-patches"
           mkdir -p "$PATCH_STAGING"
@@ -160,6 +163,8 @@ jobs:
             'CONFIG_SPI=y' \
             'CONFIG_SPI_FSL_DSPI=y' \
             'CONFIG_SPI_FSL_QSPI=y' \
+            'CONFIG_MTD_M25P80=y' \
+            'CONFIG_MTD_CHAR=y' \
             'CONFIG_CDX_BUS=y' \
             '# CONFIG_DEBUG_PREEMPT is not set' \
             'CONFIG_QORIQ_CPUFREQ=y' \
