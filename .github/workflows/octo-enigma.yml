@@ -342,12 +342,11 @@ jobs:
               if [ -n "$KSRC" ] && [ -d "$KSRC/arch/arm64/boot/dts/freescale" ]; then
                 echo "### Building Mono Gateway DTB from kernel source"
                 # Copy our custom DTS into the kernel tree
-                # cp "$GITHUB_WORKSPACE/data/dtb/mono-gateway-dk.dts" \
-                cp "$GITHUB_WORKSPACE/data/dtb/mono-gw.dts" \
-                   "$KSRC/arch/arm64/boot/dts/freescale/mono-gw.dts"
+                cp "$GITHUB_WORKSPACE/data/dtb/mono-gateway-dk.dts" \
+                   "$KSRC/arch/arm64/boot/dts/freescale/mono-gateway-dk.dts"
                 # Build it using the kernel's DTS infrastructure
                 make -C "$KSRC" freescale/mono-gateway-dk.dtb 2>&1 | tail -10 || true
-                MONO_DTB="$KSRC/arch/arm64/boot/dts/freescale/mono-gw.dtb"
+                MONO_DTB="$KSRC/arch/arm64/boot/dts/freescale/mono-gateway-dk.dtb"
                 if [ -f "$MONO_DTB" ]; then
                   # Replace the SDK-extracted DTB with our mainline-compiled one
                   cp "$MONO_DTB" "$GITHUB_WORKSPACE/vyos-build/data/live-build-config/includes.binary/mono-gw.dtb"
