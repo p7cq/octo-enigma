@@ -458,6 +458,8 @@ jobs:
             --custom-package u-boot-tools \
             --custom-package libubootenv-tool \
             --custom-package xxd \
+            --custom-package mtd-utils \
+            --custom-package strace \
             generic
           cd build
           # Determine image name and iso file
