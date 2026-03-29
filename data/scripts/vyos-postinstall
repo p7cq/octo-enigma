@@ -122,8 +122,11 @@ setup_uboot_env_once() {
 main() {
     check_board
 
-    local root
-    root=$(find_root)
+    local mp='/mnt'
+    local root="${mp}/boot"
+    # root=$(find_root)
+    mount /dev/mmcblk0p3 "${mp}"
+
     local image_name="${1:-}"
 
     if [ -z "$image_name" ]; then
@@ -147,6 +150,7 @@ main() {
     echo ""
 
     write_vyos_env "$image_name" "$root"
+    [[ "$(lsblk /dev/mmcblk0p3 -no mountpoints)" == "${mp}" ]] && umount "${mp}"
     setup_uboot_env_once
 
     echo ""
