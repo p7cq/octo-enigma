@@ -18,7 +18,7 @@ index 268a3b195..1a5cddcc6 100644
      else:
          root_size_text: str = str(root_size)
 -    command = f'sgdisk -a1 -n1:2048:4095 -t1:EF02 -n2:4096:+256M -t2:EF00 \
-+    command = f'sgdisk -a1 -n1:32768:+1M -t1:EF02 -n2:0:+256M -t2:EF00 \
++    command = f'sgdisk -a1 -n1:65536:+1M -t1:EF02 -n2:0:+256M -t2:EF00 \
          -n3:0:+{root_size_text}K -t3:8300 {drive_path}'
  
      run(command)

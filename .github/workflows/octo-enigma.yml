@@ -445,6 +445,7 @@ jobs:
             --version ${{ steps.set_env_variables.outputs.build_version }} \
             --vyos-mirror $VYOS_MIRROR \
             --custom-package vim \
+            --custom-package fastnetmon \
             --custom-package mokutil \
             --custom-package sbsigntool \
             --custom-package grub-efi-arm64-signed \
