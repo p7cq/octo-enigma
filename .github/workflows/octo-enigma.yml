@@ -118,7 +118,9 @@ jobs:
             cp ../ls1046a-patches/reftree.cache data/reftree.cache
             sed -i 's/all clean copyright/all: clean/' Makefile
             for p in ../ls1046a-patches/vyos-1x-*.patch; do
-              patch --no-backup-if-mismatch -p1 < "$p"
+              if ! patch --no-backup-if-mismatch -p1 < "$p"; then
+                  echo "WARNING: $(basename $p) failed to apply"
+              fi
             done
           """
           EOF
@@ -131,6 +133,11 @@ jobs:
 
           ### Kernel config
           DEFCONFIG=vyos-build/scripts/package-build/linux-kernel/config/arm64/vyos_defconfig
+          sed -i '/CONFIG_DEVTMPFS_MOUNT/d'          "$DEFCONFIG"
+          sed -i '/CONFIG_CPU_FREQ_DEFAULT_GOV/d'    "$DEFCONFIG"
+          sed -i '/CONFIG_STRICT_DEVMEM/d'           "$DEFCONFIG"
+          sed -i '/CONFIG_IO_STRICT_DEVMEM/d'        "$DEFCONFIG"
+          sed -i '/CONFIG_DEBUG_PREEMPT/d'           "$DEFCONFIG"
           printf '%s\n' \
             '# === LS1046A / NXP Layerscape DPAA1 (Mono Gateway DK) ===' \
             'CONFIG_DEVTMPFS_MOUNT=y' \
@@ -172,7 +179,10 @@ jobs:
             'CONFIG_GPIO_MPC8XXX=y' \
             '# === Board peripherals (fan, thermal, RTC, power sensors) ===' \
             'CONFIG_SENSORS_EMC2305=y' \
+            'CONFIG_SENSORS_INA2XX=y' \
             'CONFIG_RTC_DRV_PCF2127=y' \
+            '# === DPDK USDPAA support (userspace DPAA1 for 10G PMD) ===' \
+            ## 'CONFIG_FSL_USDPAA_MAINLINE=y' \
             '# === USB live boot support (built-in for initramfs FAT32 access) ===' \
             'CONFIG_USB_STORAGE=y' \
             'CONFIG_VFAT_FS=y' \
@@ -257,7 +267,7 @@ jobs:
           #!/bin/bash
           # Install fancontrol daemon for EMC2305 PWM fan control
           # Config at /etc/fancontrol maps EMC2305 PWM to core-cluster thermal zone
-          apt-get update -qq && apt-get install -y --no-install-recommends fancontrol
+          apt-get update -qq && apt-get install -y --no-install-recommends fancontrol libatomic1
           systemctl enable fancontrol.service
           # Enable vyos-postinstall (writes /boot/vyos.env on install/upgrade).
           # Must be done inside chroot hook — ln -sf in includes.chroot gets
@@ -265,7 +275,7 @@ jobs:
           # systemctl enable vyos-postinstall.service
           apt-get clean
           FANHOOK
-          # chmod +x "$HOOKS/98-fancontrol.chroot"
+          chmod +x "$HOOKS/98-fancontrol.chroot"
 
           ### Boot optimization: mask unnecessary services for LS1046A
           # kexec masking forces full cold reboot on installed systems, ensuring
