@@ -297,30 +297,30 @@ jobs:
           # ENV{VYOS_IFNAME}: if set, it's passed as "predefined" name to
           # vyos_net_name, bypassing biosdevname. We set VYOS_IFNAME in a
           # priority-64 rule (before 65) using DEVPATH to identify FMan MACs.
-          UDEVD="$CHROOT/etc/udev/rules.d"
-          mkdir -p "$UDEVD"
-          printf '%s\n' \
-            '# Mono Gateway LS1046A: remap FMan ethernet ports to match physical RJ45 order' \
-            '# DEVPATH contains the FMan MAC node address (always available, unlike ID_PATH)' \
-            '# Sets VYOS_IFNAME which vyos_net_name (65-vyos-net.rules) honors as "predefined"' \
-            'ACTION!="add", GOTO="fman_end"' \
-            'SUBSYSTEM!="net", GOTO="fman_end"' \
-            '# RJ45 ports (left to right facing the board)' \
-            'ENV{DEVPATH}=="*/1ae8000.ethernet/*", ENV{VYOS_IFNAME}="eth0"' \
-            'ENV{DEVPATH}=="*/1aea000.ethernet/*", ENV{VYOS_IFNAME}="eth1"' \
-            'ENV{DEVPATH}=="*/1ae2000.ethernet/*", ENV{VYOS_IFNAME}="eth2"' \
-            '# SFP+ ports (left to right)' \
-            'ENV{DEVPATH}=="*/1af0000.ethernet/*", ENV{VYOS_IFNAME}="eth3"' \
-            'ENV{DEVPATH}=="*/1af2000.ethernet/*", ENV{VYOS_IFNAME}="eth4"' \
-            'LABEL="fman_end"' \
-            > "$UDEVD/64-fman-port-order.rules"
+          # UDEVD="$CHROOT/etc/udev/rules.d"
+          # mkdir -p "$UDEVD"
+          # printf '%s\n' \
+          #   '# Mono Gateway LS1046A: remap FMan ethernet ports to match physical RJ45 order' \
+          #   '# DEVPATH contains the FMan MAC node address (always available, unlike ID_PATH)' \
+          #   '# Sets VYOS_IFNAME which vyos_net_name (65-vyos-net.rules) honors as "predefined"' \
+          #   'ACTION!="add", GOTO="fman_end"' \
+          #   'SUBSYSTEM!="net", GOTO="fman_end"' \
+          #   '# RJ45 ports (left to right facing the board)' \
+          #   'ENV{DEVPATH}=="*/1ae8000.ethernet/*", ENV{VYOS_IFNAME}="eth0"' \
+          #   'ENV{DEVPATH}=="*/1aea000.ethernet/*", ENV{VYOS_IFNAME}="eth1"' \
+          #   'ENV{DEVPATH}=="*/1ae2000.ethernet/*", ENV{VYOS_IFNAME}="eth2"' \
+          #   '# SFP+ ports (left to right)' \
+          #   'ENV{DEVPATH}=="*/1af0000.ethernet/*", ENV{VYOS_IFNAME}="eth3"' \
+          #   'ENV{DEVPATH}=="*/1af2000.ethernet/*", ENV{VYOS_IFNAME}="eth4"' \
+          #   'LABEL="fman_end"' \
+          #   > "$UDEVD/64-fman-port-order.rules"
 
       - name: Build Image Packages
         run: |
           cd vyos-build/scripts/package-build
           source <(sed -n '/enable programmable completion/,$p' /etc/skel/.bashrc)
           set -ex
-          packages="linux-kernel vyos-1x"
+          packages="vyos-1x linux-kernel"
           ignore_packages=(amazon-cloudwatch-agent amazon-ssm-agent xen-guest-agent)
           for package in $packages; do
             [ ! -d $package ] && continue

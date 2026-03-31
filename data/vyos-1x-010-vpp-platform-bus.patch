@@ -37,7 +37,7 @@ eth3/eth4 (10G SFP+).
          _normalize_buffers(effective_config)
          for iface_config in effective_config['settings']['interface'].values():
 -            iface_config['driver'] = 'dpdk'
-+            _edrv = eth_ifaces_persist.get(_ename, {}).get('original_driver', '')
++            _edrv = eth_ifaces_persist.get(iface, {}).get('original_driver', '')
 +            if _edrv in platform_bus_xdp_drivers:
 +                iface_config['driver'] = 'xdp'
 +            else:
