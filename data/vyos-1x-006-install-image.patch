@@ -12,7 +12,7 @@ index 7ae9a15bb..62fd62974 100644
  
      run(command)
 diff --git a/python/vyos/system/grub.py b/python/vyos/system/grub.py
-index 0f04fa5e9..e84a6c5bd 100644
+index 0f04fa5e9..b2b5bb4b0 100644
 --- a/python/vyos/system/grub.py
 +++ b/python/vyos/system/grub.py
 @@ -81,8 +81,7 @@ def install(drive_path: str, boot_dir: str, efi_dir: str, id: str = 'VyOS', chro
@@ -25,8 +25,22 @@ index 0f04fa5e9..e84a6c5bd 100644
      )
  
  
+@@ -354,6 +353,13 @@ def set_default(version_name: str, root_dir: str = '') -> None:
+     vars_current['default'] = gen_version_uuid(version_name)
+     vars_write(vars_file, vars_current)
+ 
++    # U-Boot boards: write /boot/vyos.env so bootloader knows the default image.
++    try:
++        Path(f'{root_dir}/boot/vyos.env').write_text(
++            f'vyos_image={version_name}\n')
++    except Exception:
++        pass  # non-fatal: only relevant on U-Boot boards
++
+ 
+ def common_write(root_dir: str = '', grub_common: dict[str, str] = {}) -> None:
+     """Write common GRUB configuration file (overwrite everything)
 diff --git a/src/op_mode/image_installer.py b/src/op_mode/image_installer.py
-index cb3aa7b6c..38da72414 100755
+index cb3aa7b6c..24d73156e 100755
 --- a/src/op_mode/image_installer.py
 +++ b/src/op_mode/image_installer.py
 @@ -119,7 +119,7 @@
@@ -46,3 +60,28 @@ index cb3aa7b6c..38da72414 100755
      print(MSG_INFO_INSTALL_PARTITONING)
      raid.clear()
      disk.disk_cleanup(target_disk)
+@@ -993,6 +994,12 @@ def install_image() -> None:
+         grub.set_default(image_name, DIR_DST_ROOT)
+         grub.set_console_type(console_dict[console_type], DIR_DST_ROOT)
+ 
++        # U-Boot boards: one-time bootloader env setup
++        try:
++            run('vyos-postinstall')
++        except Exception:
++            pass
++
+         if is_raid_install(install_target):
+             # add RAID specific modules
+             grub.modules_write(f'{DIR_DST_ROOT}/{grub.CFG_VYOS_MODULES}',
+@@ -1242,6 +1249,11 @@ def add_image(image_path: str, vrf: str = None, username: str = '',
+         copy(f'{DIR_ISO_MOUNT}/live/filesystem.squashfs',
+              f'{root_dir}/boot/{image_name}/{image_name}.squashfs')
+ 
++        # Copy device tree blobs for U-Boot boards (e.g., LS1046A)
++        for file in Path(DIR_ISO_MOUNT).iterdir():
++            if file.is_file() and file.suffix == '.dtb':
++                copy(file, f'{root_dir}/boot/{image_name}/')
++
+         # unmount an ISO and cleanup
+         cleanup([str(iso_path)])
+ 
