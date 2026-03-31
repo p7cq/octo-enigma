@@ -11,6 +11,20 @@ index 7ae9a15bb..62fd62974 100644
          -n3:0:+{root_size_text}K -t3:8300 {drive_path}'
  
      run(command)
+diff --git a/python/vyos/system/grub.py b/python/vyos/system/grub.py
+index 0f04fa5e9..e84a6c5bd 100644
+--- a/python/vyos/system/grub.py
++++ b/python/vyos/system/grub.py
+@@ -81,8 +81,7 @@ def install(drive_path: str, boot_dir: str, efi_dir: str, id: str = 'VyOS', chro
+     cmd(
+         f'{chroot_cmd} grub-install --no-floppy --recheck --target={efi_installation_arch}-efi \
+             --force-extra-removable --boot-directory={boot_dir} \
+-            --efi-directory={efi_dir} --bootloader-id="{id}" \
+-            --uefi-secure-boot'
++            --efi-directory={efi_dir} --bootloader-id="{id}"'
+     )
+ 
+ 
 diff --git a/src/op_mode/image_installer.py b/src/op_mode/image_installer.py
 index cb3aa7b6c..38da72414 100755
 --- a/src/op_mode/image_installer.py
