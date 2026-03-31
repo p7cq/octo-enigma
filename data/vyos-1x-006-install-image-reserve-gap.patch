@@ -1,5 +1,5 @@
 diff --git a/python/vyos/system/disk.py b/python/vyos/system/disk.py
-index 7ae9a15bb..cb073813f 100644
+index 7ae9a15bb..62fd62974 100644
 --- a/python/vyos/system/disk.py
 +++ b/python/vyos/system/disk.py
 @@ -73,7 +73,7 @@ def parttable_create(drive_path: str, root_size: int) -> None:
@@ -7,12 +7,12 @@ index 7ae9a15bb..cb073813f 100644
      else:
          root_size_text: str = str(root_size)
 -    command = f'sgdisk -a1 -n1:2048:4095 -t1:EF02 -n2:4096:+256M -t2:EF00 \
-+    command = f'sgdisk -a1 -n1:65536:+1M -t1:EF02 -n2:0:+256M -t2:EF00 \
++    command = f'sgdisk -n1:65536:+1M -t1:EF02 -n2:0:+256M -t2:EF00 \
          -n3:0:+{root_size_text}K -t3:8300 {drive_path}'
  
      run(command)
 diff --git a/src/op_mode/image_installer.py b/src/op_mode/image_installer.py
-index cb3aa7b6c..171a6e645 100755
+index cb3aa7b6c..38da72414 100755
 --- a/src/op_mode/image_installer.py
 +++ b/src/op_mode/image_installer.py
 @@ -119,7 +119,7 @@
@@ -24,3 +24,11 @@ index cb3aa7b6c..171a6e645 100755
  
  # define directories and paths
  DIR_CONFIG: str = directories['config']
+@@ -231,6 +231,7 @@ def create_partitions(target_disk: str, target_size: int,
+     else:
+         rootfs_size: int = available_size
+ 
++    rootfs_size -= 32768
+     print(MSG_INFO_INSTALL_PARTITONING)
+     raid.clear()
+     disk.disk_cleanup(target_disk)
