@@ -181,8 +181,8 @@ jobs:
             'CONFIG_SENSORS_EMC2305=y' \
             'CONFIG_SENSORS_INA2XX=y' \
             'CONFIG_RTC_DRV_PCF2127=y' \
-            # '# === DPDK USDPAA support (userspace DPAA1 for 10G PMD) ===' \
-            # 'CONFIG_FSL_USDPAA_MAINLINE=y' \
+            '# === DPDK USDPAA support (userspace DPAA1 for 10G PMD) ===' \
+            '# CONFIG_FSL_USDPAA_MAINLINE=y' \
             '# === USB live boot support (built-in for initramfs FAT32 access) ===' \
             'CONFIG_USB_STORAGE=y' \
             'CONFIG_VFAT_FS=y' \
