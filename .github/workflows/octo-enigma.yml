@@ -186,7 +186,7 @@ jobs:
           # find "$VYOS1X_BUILD" -name '*.py' -exec \
           #   grep -l 'uefi.secure.boot' {} \; | \
           #   xargs -r sed -i "s/'--uefi-secure-boot'[,]\?//g" 2>/dev/null || true
-          find "$VYOS1X_BUILD" -type f -name "grub.py" -exec
+          find "$VYOS1X_BUILD" -type f -name "grub.py" -exec \
               grep -l 'uefi-secure-boot' {} \; | xargs -r sed -i "s/--uefi-secure-boot'$/'/g" || true
 
           ### LSI1046A console
