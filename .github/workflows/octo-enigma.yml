@@ -120,7 +120,8 @@ jobs:
             sed -i 's/all clean copyright/all: clean/' Makefile
             for p in ../ls1046a-patches/vyos-1x-*.patch; do
               if ! patch --no-backup-if-mismatch -p1 < "$p"; then
-                  echo "WARNING: $(basename $p) failed to apply"
+                  echo "ERROR: $(basename $p) failed to apply, aborting"
+                  exit 1
               fi
             done
           """
@@ -528,7 +529,8 @@ jobs:
           echo "usb_img=${USB_IMG}" >> $GITHUB_OUTPUT
 
           # Move artifacts to workspace to avoid nested path in artifact archive
-          mv manifest.json ${GENERIC_IMAGE_ISO} ${GENERIC_IMAGE_ISO}.minisig $GITHUB_WORKSPACE
+          mv manifest.json ${USB_IMG} ${USB_IMG}.minisig \
+            ${GENERIC_IMAGE_ISO} ${GENERIC_IMAGE_ISO}.minisig $GITHUB_WORKSPACE
 
       - uses: actions/upload-artifact@v7
         with:
