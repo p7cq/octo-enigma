@@ -46,7 +46,7 @@ index 0f04fa5e9..4461e128e 100644
  def common_write(root_dir: str = '', grub_common: dict[str, str] = {}) -> None:
      """Write common GRUB configuration file (overwrite everything)
 diff --git a/src/op_mode/image_installer.py b/src/op_mode/image_installer.py
-index cb3aa7b6c..ba4f36b21 100755
+index cb3aa7b6c..75fb5fb46 100755
 --- a/src/op_mode/image_installer.py
 +++ b/src/op_mode/image_installer.py
 @@ -119,7 +119,7 @@
@@ -78,15 +78,7 @@ index cb3aa7b6c..ba4f36b21 100755
      for disk_name, disk_size in disks_available.items():
          disk_size_human: str = bytes_to_gb(disk_size)
          print(f'Drive: {disk_name} ({disk_size_human} GB)')
-@@ -926,7 +932,6 @@ def install_image() -> None:
- 
-     install_target: Union[disk.DiskDetails, raid.RaidDetails, None] = None
-     try:
--        install_target = check_raid_install(disks)
-         if install_target is None:
-             install_target = ask_single_disk(disks)
- 
-@@ -1242,6 +1247,11 @@ def add_image(image_path: str, vrf: str = None, username: str = '',
+@@ -1242,6 +1248,11 @@ def add_image(image_path: str, vrf: str = None, username: str = '',
          copy(f'{DIR_ISO_MOUNT}/live/filesystem.squashfs',
               f'{root_dir}/boot/{image_name}/{image_name}.squashfs')
  
