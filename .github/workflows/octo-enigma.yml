@@ -676,7 +676,8 @@ jobs:
           files: |
             ${{ needs.build_generic_iso.outputs.generic_image_iso }}
             ${{ needs.build_generic_iso.outputs.generic_image_iso }}.minisig
-            vyos-packages.tar
+            vyos-*-usb.img.zst
+            vyos-*-usb.img.zst.minisig
 
       - uses: dev-drprasad/delete-older-releases@v0.3.4
         with:
