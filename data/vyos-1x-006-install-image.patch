@@ -42,7 +42,7 @@ index ed8a96fbb..d1868fea8 100644
  
  def if_not_live_boot(func):
 diff --git a/src/op_mode/image_installer.py b/src/op_mode/image_installer.py
-index cb3aa7b6c..287a2704f 100755
+index cb3aa7b6c..982da3419 100755
 --- a/src/op_mode/image_installer.py
 +++ b/src/op_mode/image_installer.py
 @@ -119,7 +119,7 @@
@@ -76,7 +76,7 @@ index cb3aa7b6c..287a2704f 100755
      for disk_name, disk_size in disks_available.items():
          disk_size_human: str = bytes_to_gb(disk_size)
          print(f'Drive: {disk_name} ({disk_size_human} GB)')
-@@ -993,6 +1001,43 @@ def install_image() -> None:
+@@ -993,6 +1001,33 @@ def install_image() -> None:
          grub.set_default(image_name, DIR_DST_ROOT)
          grub.set_console_type(console_dict[console_type], DIR_DST_ROOT)
  
@@ -87,16 +87,6 @@ index cb3aa7b6c..287a2704f 100755
 +        except Exception as e:
 +            print(f'ERROR: unable to write vyos.env: {e}')
 +            pass
-+
-+        # U-Boot: copy device tree blobs
-+        copied: int = 0
-+        for file in Path(DIR_ISO_MOUNT).iterdir():
-+            if file.is_file() and file.suffix == '.dtb':
-+                copy(file, f'{DIR_DST_ROOT}/boot/{image_name}/')
-+                copied += 1
-+        if copied == 0:
-+            print('ERROR: device tree blob not copied')
-+            # crit
 +
 +        # U-Boot boards: one-time bootloader env setup (fw_setenv).
 +        # Pass --root so the script operates on the eMMC mount, not /.
