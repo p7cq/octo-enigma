@@ -539,6 +539,8 @@ jobs:
             manifest.json
             ${{ steps.build_generic_iso.outputs.generic_image_iso }}
             ${{ steps.build_generic_iso.outputs.generic_image_iso }}.minisig
+            ${{ steps.build_generic_iso.outputs.usb_img }}
+            ${{ steps.build_generic_iso.outputs.usb_img }}.minisig
           retention-days: 15
           if-no-files-found: error
           compression-level: 0
