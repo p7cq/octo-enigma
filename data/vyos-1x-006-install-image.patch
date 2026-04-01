@@ -1,8 +1,18 @@
 diff --git a/python/vyos/system/disk.py b/python/vyos/system/disk.py
-index 7ae9a15bb..62fd62974 100644
+index 7ae9a15bb..b5f3c77c2 100644
 --- a/python/vyos/system/disk.py
 +++ b/python/vyos/system/disk.py
-@@ -73,7 +73,7 @@ def parttable_create(drive_path: str, root_size: int) -> None:
+@@ -42,8 +42,7 @@ def disk_cleanup(drive_path: str) -> None:
+     partitions: list[str] = partition_list(drive_path)
+     for partition in partitions:
+         run(f'wipefs -af {partition}')
+-    run(f'wipefs -af {drive_path}')
+-    run(f'sgdisk -Z {drive_path}')
++    run(f'sgdisk -o {drive_path}')
+ 
+ 
+ def find_persistence() -> str:
+@@ -73,7 +72,7 @@ def parttable_create(drive_path: str, root_size: int) -> None:
          root_size_text: str = '+100%'
      else:
          root_size_text: str = str(root_size)
