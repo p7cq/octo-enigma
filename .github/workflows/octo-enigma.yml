@@ -468,9 +468,7 @@ jobs:
             --custom-package shim-signed \
             --custom-package u-boot-tools \
             --custom-package libubootenv-tool \
-            --custom-package xxd \
             --custom-package mtd-utils \
-            --custom-package strace \
             generic
           cd build
           # Determine image name and iso file
@@ -488,6 +486,46 @@ jobs:
             # create a non-zero file to indicate failure
             echo "fake sign" > ${GENERIC_IMAGE_ISO}.minisig
           fi
+          ### Create FAT32 USB boot image
+          # U-Boot reads FAT32 natively. ISO9660 requires Rufus workarounds.
+          # Linux/macOS: dd if=vyos-*-usb.img of=/dev/sdX bs=4M
+          # Windows: Rufus → select .img → DD Image mode (NOT ISO mode)
+          # Layout: /live/{vmlinuz,initrd.img,filesystem.squashfs} + /mono-gw.dtb + /boot.scr
+          USB_IMG="${GENERIC_IMAGE_NAME}-usb.img"
+          mkdir -p /tmp/iso-mount
+          mount -o loop "$GENERIC_IMAGE_ISO" /tmp/iso-mount
+          truncate -s 4G "$USB_IMG"
+          mkdosfs -F 32 -n VYOSBOOT "$USB_IMG"
+          mmd   -i "$USB_IMG" ::/live
+          mcopy -i "$USB_IMG" /tmp/iso-mount/live/vmlinuz             ::/live/vmlinuz
+          mcopy -i "$USB_IMG" /tmp/iso-mount/live/initrd.img          ::/live/initrd.img
+          mcopy -i "$USB_IMG" /tmp/iso-mount/live/filesystem.squashfs ::/live/filesystem.squashfs
+          mcopy -i "$USB_IMG" $GITHUB_WORKSPACE/data/dtb/mono-gw.dtb  ::mono-gw.dtb
+
+          # Generate U-Boot boot script (boot.scr) — loads kernel/DTB/initrd from USB FAT32
+          # and boots directly. Does NOT modify U-Boot environment or SPI flash.
+          # eMMC boot setup is handled by vyos-postinstall after install image.
+          # Source: data/scripts/boot.cmd (compiled with mkimage)
+          mkimage -A arm64 -T script -C none -n "VyOS LS1046A USB Boot" \
+            -d "$GITHUB_WORKSPACE/data/scripts/boot.cmd" /tmp/boot.scr
+          mcopy -i "$USB_IMG" /tmp/boot.scr ::boot.scr
+
+          umount /tmp/iso-mount
+
+          # Compress USB image — raw 4 GiB FAT32 (mostly zeros) exceeds GitHub's
+          # 2 GiB release asset limit. zstd -19 shrinks it to ~800 MB.
+          # Decompress before writing to USB: zstd -d vyos-*-usb.img.zst
+          zstd -T0 -19 --rm "${USB_IMG}"
+          USB_IMG="${USB_IMG}.zst"
+
+          if [ -f "$MINISIGN_SECKEY_FILE" ]; then
+            $GITHUB_WORKSPACE/bin/minisign -s $MINISIGN_SECKEY_FILE -Sm "${USB_IMG}"
+            $GITHUB_WORKSPACE/bin/minisign -Vm "${USB_IMG}" -x "${USB_IMG}.minisig" -p $MINISIGN_PUBKEY_FILE
+          else
+            echo "fake sign" > "${USB_IMG}.minisig"
+          fi
+          echo "usb_img=${USB_IMG}" >> $GITHUB_OUTPUT
+
           # Move artifacts to workspace to avoid nested path in artifact archive
           mv manifest.json ${GENERIC_IMAGE_ISO} ${GENERIC_IMAGE_ISO}.minisig $GITHUB_WORKSPACE
 
