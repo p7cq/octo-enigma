@@ -57,7 +57,8 @@ jobs:
             libnftnl-dev libnl-nf-3-dev libpopt-dev libpcap-dev libbpf-dev \
             bubblewrap git-lfs kpartx clang llvm cmake \
             protobuf-compiler python3-cracklib python3-protobuf \
-            libreadline-dev liblua5.3-dev byacc flex
+            libreadline-dev liblua5.3-dev byacc flex \
+            dosfstools mtools zstd u-boot-tools
           apt-get upgrade -y
 
       - uses: actions/checkout@v6
