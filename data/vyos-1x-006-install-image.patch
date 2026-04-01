@@ -28,7 +28,7 @@ index 7ae9a15bb..f655bd0a8 100644
  
      run(command)
 diff --git a/python/vyos/system/grub.py b/python/vyos/system/grub.py
-index 0f04fa5e9..de3d82c51 100644
+index 0f04fa5e9..4461e128e 100644
 --- a/python/vyos/system/grub.py
 +++ b/python/vyos/system/grub.py
 @@ -354,6 +354,13 @@ def set_default(version_name: str, root_dir: str = '') -> None:
@@ -40,7 +40,7 @@ index 0f04fa5e9..de3d82c51 100644
 +        Path(f'{root_dir}/boot/vyos.env').write_text(
 +            f'vyos_image={version_name}\n')
 +    except Exception as e:
-+        print(f'Unable to write U-Boot environment file')
++        print(f'Unable to write U-Boot environment file: {e}')
 +
  
  def common_write(root_dir: str = '', grub_common: dict[str, str] = {}) -> None:
