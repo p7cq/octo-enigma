@@ -190,14 +190,18 @@ jobs:
             'CONFIG_NLS_CODEPAGE_437=y' \
             'CONFIG_NLS_ISO8859_1=y' \
             'CONFIG_NLS_UTF8=y' \
+            '# === Watchdog (IMX2 WDT — fsl,ls1046a-wdt / fsl,imx21-wdt) ===' \
+            'CONFIG_WATCHDOG=y' \
+            'CONFIG_WATCHDOG_CORE=y' \
+            'CONFIG_IMX2_WDT=y' \
             >> "$DEFCONFIG"
 
           ### Remove --uefi-secure-boot from grub-install
           # find "$VYOS1X_BUILD" -name '*.py' -exec \
           #   grep -l 'uefi.secure.boot' {} \; | \
           #   xargs -r sed -i "s/'--uefi-secure-boot'[,]\?//g" 2>/dev/null || true
-          find "$VYOS1X_BUILD" -type f -name "grub.py" -exec \
-              grep -l 'uefi-secure-boot' {} \; | xargs -r sed -i "s/--uefi-secure-boot'$/'/g" || true
+          # find "$VYOS1X_BUILD" -type f -name "grub.py" -exec \
+          #     grep -l 'uefi-secure-boot' {} \; | xargs -r sed -i "s/--uefi-secure-boot'$/'/g" || true
 
           ### LSI1046A console
           sed -i 's/ttyAMA0/ttyS0/g' \
