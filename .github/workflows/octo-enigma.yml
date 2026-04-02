@@ -185,6 +185,9 @@ jobs:
             'CONFIG_RTC_DRV_PCF2127=y' \
             '# === DPDK USDPAA support (userspace DPAA1 for 10G PMD) ===' \
             '# CONFIG_FSL_USDPAA_MAINLINE=y' \
+            '# === Disable STRICT_DEVMEM for DPDK DPAA PMD (fman_init mmaps /dev/mem) ===' \
+            '# CONFIG_STRICT_DEVMEM is not set' \
+            '# CONFIG_IO_STRICT_DEVMEM is not set' \
             '# === USB live boot support (built-in for initramfs FAT32 access) ===' \
             'CONFIG_USB_STORAGE=y' \
             'CONFIG_VFAT_FS=y' \
@@ -197,6 +200,32 @@ jobs:
             'CONFIG_WATCHDOG_CORE=y' \
             'CONFIG_IMX2_WDT=y' \
             >> "$DEFCONFIG"
+
+          KERNEL_BUILD=vyos-build/scripts/package-build/linux-kernel
+          KERNEL_PATCHES="$KERNEL_BUILD/patches/kernel"
+          mkdir -p "$KERNEL_PATCHES"
+          cp data/kernel-patches/4002-hwmon-ina2xx-add-INA234-support.patch "$KERNEL_PATCHES/"
+          cp data/kernel-patches/4003-sfp-rollball-phylink-einval-fallback.patch "$KERNEL_PATCHES/"
+          # cp data/kernel-patches/9001-usdpaa-bman-qman-exports-and-driver.patch "$KERNEL_PATCHES/"
+          # cp data/kernel-patches/fsl_usdpaa_mainline.c "$KERNEL_BUILD/"
+          cp data/kernel-patches/patch-phylink.py "$KERNEL_BUILD/"
+
+          # Inject .c file copy before "# Change name of Signing Cert" in build-kernel.sh.
+          # awk '/# Change name of Signing Cert/ {
+          #   print "# Copy USDPAA mainline driver source (too large for unified diff)"
+          #   print "if [ -f \"${CWD}/fsl_usdpaa_mainline.c\" ]; then"
+          #   print "  echo \"I: Copy fsl_usdpaa_mainline.c to drivers/soc/fsl/qbman/\""
+          #   print "  cp \"${CWD}/fsl_usdpaa_mainline.c\" drivers/soc/fsl/qbman/fsl_usdpaa_mainline.c"
+          #   print "fi"
+          #   print ""
+          #   print "# Patch phylink: trust SFP link over PCS in INBAND mode (LS1046A XFI regression)"
+          #   print "PHYLINK_C=$(find . -path \"*/net/phylink.c\" -maxdepth 4 | head -1)"
+          #   print "if [ -n \"$PHYLINK_C\" ] && [ -f \"${CWD}/patch-phylink.py\" ]; then"
+          #   print "  python3 \"${CWD}/patch-phylink.py\" \"$PHYLINK_C\""
+          #   print "fi"
+          # } { print }' "$KERNEL_BUILD/build-kernel.sh" > /tmp/build-kernel-patched.sh
+          # mv /tmp/build-kernel-patched.sh "$KERNEL_BUILD/build-kernel.sh"
+          # chmod +x "$KERNEL_BUILD/build-kernel.sh"
 
           ### Remove --uefi-secure-boot from grub-install
           # find "$VYOS1X_BUILD" -name '*.py' -exec \
@@ -267,6 +296,47 @@ jobs:
             'ExecStartPre=/usr/local/bin/fancontrol-setup' \
             > "$CHROOT/etc/systemd/system/fancontrol.service.d/hwmon-setup.conf"
 
+          ### VPP/DPAA1 rebind: restore kernel netdev ownership when VPP stops
+          # When VPP takes a DPAA1 port, vpp.py _dpaa_unbind_ifaces() unbinds
+          # the port's dpaa-ethernet.N from fsl_dpa and writes the mapping to
+          # /run/vpp-dpaa-unbound.json. This ExecStopPost script reads that file
+          # and rebinds on VPP stop, so removing a port from VPP config and
+          # committing restores kernel control (ip link shows the port again)
+          # without requiring a full reboot.
+          # printf '%s\n' \
+          #   '#!/bin/bash' \
+          #   '# Rebind DPAA1 interfaces back to kernel fsl_dpa after VPP stops.' \
+          #   'STATE=/run/vpp-dpaa-unbound.json' \
+          #   'BIND=/sys/bus/platform/drivers/fsl_dpa/bind' \
+          #   '[ -f "$STATE" ] || exit 0' \
+          #   'python3 - <<PYEOF' \
+          #   'import json, os, sys' \
+          #   'state_file = "/run/vpp-dpaa-unbound.json"' \
+          #   'bind_path  = "/sys/bus/platform/drivers/fsl_dpa/bind"' \
+          #   'try:' \
+          #   '    unbound = json.load(open(state_file))' \
+          #   'except Exception:' \
+          #   '    raise SystemExit(0)' \
+          #   'if os.path.exists(bind_path):' \
+          #   '    for iface, dev in unbound.items():' \
+          #   '        try:' \
+          #   '            open(bind_path, "w").write(dev)' \
+          #   '            print(f"vpp-dpaa-rebind: restored {iface} ({dev}) to fsl_dpa")' \
+          #   '        except OSError as e:' \
+          #   '            print(f"vpp-dpaa-rebind: failed {iface}: {e}", file=__import__("sys").stderr)' \
+          #   'try:' \
+          #   '    os.unlink(state_file)' \
+          #   'except OSError:' \
+          #   '    pass' \
+          #   'PYEOF' \
+          #   > "$CHROOT/usr/local/bin/vpp-dpaa-rebind"
+          # chmod +x "$CHROOT/usr/local/bin/vpp-dpaa-rebind"
+          # mkdir -p "$CHROOT/etc/systemd/system/vpp.service.d"
+          # printf '%s\n' \
+          #   '[Service]' \
+          #   'ExecStopPost=/usr/local/bin/vpp-dpaa-rebind' \
+          #   > "$CHROOT/etc/systemd/system/vpp.service.d/dpaa-rebind.conf"
+
           # Install fancontrol package and enable service (chroot hook)
           HOOKS=vyos-build/data/live-build-config/hooks/live
           cat > "$HOOKS/98-fancontrol.chroot" << 'FANHOOK'
@@ -306,32 +376,19 @@ jobs:
           MASKHOOK
           chmod +x "$HOOKS/99-mask-services.chroot"
 
-          ### Ethernet port remapping: match physical port order (left to right)
-          # Mainline fsl_dpaa_mac probes in DT address order (e2000→e8000→ea000)
-          # which gives rightmost RJ45 = eth0. Physical expectation: leftmost = eth0.
-          #
-          # VyOS uses its own naming system (vyos_net_name at 65-vyos-net.rules)
-          # which overrides systemd .link files. The VyOS rule checks for
-          # ENV{VYOS_IFNAME}: if set, it's passed as "predefined" name to
-          # vyos_net_name, bypassing biosdevname. We set VYOS_IFNAME in a
-          # priority-64 rule (before 65) using DEVPATH to identify FMan MACs.
-          # UDEVD="$CHROOT/etc/udev/rules.d"
-          # mkdir -p "$UDEVD"
-          # printf '%s\n' \
-          #   '# Mono Gateway LS1046A: remap FMan ethernet ports to match physical RJ45 order' \
-          #   '# DEVPATH contains the FMan MAC node address (always available, unlike ID_PATH)' \
-          #   '# Sets VYOS_IFNAME which vyos_net_name (65-vyos-net.rules) honors as "predefined"' \
-          #   'ACTION!="add", GOTO="fman_end"' \
-          #   'SUBSYSTEM!="net", GOTO="fman_end"' \
-          #   '# RJ45 ports (left to right facing the board)' \
-          #   'ENV{DEVPATH}=="*/1ae8000.ethernet/*", ENV{VYOS_IFNAME}="eth0"' \
-          #   'ENV{DEVPATH}=="*/1aea000.ethernet/*", ENV{VYOS_IFNAME}="eth1"' \
-          #   'ENV{DEVPATH}=="*/1ae2000.ethernet/*", ENV{VYOS_IFNAME}="eth2"' \
-          #   '# SFP+ ports (left to right)' \
-          #   'ENV{DEVPATH}=="*/1af0000.ethernet/*", ENV{VYOS_IFNAME}="eth3"' \
-          #   'ENV{DEVPATH}=="*/1af2000.ethernet/*", ENV{VYOS_IFNAME}="eth4"' \
-          #   'LABEL="fman_end"' \
-          #   > "$UDEVD/64-fman-port-order.rules"
+          ### Ethernet port remapping: FMan MAC → physical port position
+          # FMan MACs probe by DT unit-address order (e2000, e8000, ea000, f0000,
+          # f2000) which doesn't match physical port positions. systemd also
+          # renames interfaces to e2-e6 using predictable naming.
+          # Fix: udev rule calls fman-port-name script which reads each interface's
+          # device-tree node to determine the correct ethN name. A .link file
+          # prevents systemd from overriding the udev-assigned name.
+          cp data/scripts/fman-port-name "$CHROOT/usr/local/bin/fman-port-name"
+          chmod +x "$CHROOT/usr/local/bin/fman-port-name"
+          mkdir -p "$CHROOT/etc/udev/rules.d"
+          cp data/scripts/10-fman-port-order.rules "$CHROOT/etc/udev/rules.d/10-fman-port-order.rules"
+          mkdir -p "$CHROOT/etc/systemd/network"
+          cp data/scripts/00-fman.link "$CHROOT/etc/systemd/network/00-fman.link"
 
       - name: Build Image Packages
         run: |
