@@ -430,7 +430,7 @@ maximum-power-milliwatt = <3000>;
 			#address-cells = <1>;
 			#size-cells = <1>;
 
-			partition@0 {
+			partition@flash {
 				label = "flash";
 				reg = <0x00 0x4000000>;
 				read-only;
