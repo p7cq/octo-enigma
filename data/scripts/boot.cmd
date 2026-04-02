@@ -22,7 +22,7 @@ fatload usb 0:0 ${ramdisk_addr_r} live/initrd.img
 
 # --- Set bootargs for live session ---
 
-setenv bootargs console=ttyS0,115200 earlycon=uart8250,mmio,0x21c0500 boot=live live-media=/dev/sda rootdelay=5 components noeject nopersistence noautologin nonetworking union=overlay net.ifnames=0 fsl_dpaa_fman.fsl_fm_max_frm=9600 panic=60
+setenv bootargs console=ttyS0,115200 earlycon=uart8250,mmio,0x21c0500 boot=live live-media=/dev/sda rootdelay=5 components noeject nopersistence noautologin nonetworking union=overlay net.ifnames=0 fsl_dpaa_fman.fsl_fm_max_frm=9600 hugepagesz=2M hugepages=512 panic=60
 
 # --- Boot ---
 
