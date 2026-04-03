@@ -22,7 +22,7 @@ env:
   VYOS_MIRROR: https://packages.vyos.net/repositories/current/
 
 jobs:
-  build:
+  build_iso:
     runs-on: ubuntu-24.04-arm
     permissions:
       contents: write
@@ -37,9 +37,9 @@ jobs:
       build_version: ${{ steps.set_env_variables.outputs.build_version }}
       TIMESTAMP: ${{ steps.set_env_variables.outputs.TIMESTAMP }}
       PREVIOUS_SUCCESS_BUILD_TIMESTAMP: ${{ steps.set_env_variables.outputs.PREVIOUS_SUCCESS_BUILD_TIMESTAMP }}
-      mono_image_name: ${{ steps.build.outputs.mono_image_name }}
-      mono_image_iso: ${{ steps.build.outputs.mono_image_iso }}
-      mono_image_usb: ${{ steps.build.outputs.mono_image_usb }}
+      mono_image_name: ${{ steps.build_iso.outputs.mono_image_name }}
+      mono_image_iso: ${{ steps.build_iso.outputs.mono_image_iso }}
+      mono_image_usb: ${{ steps.build_iso.outputs.mono_image_usb }}
 
     steps:
       - name: Install Dependencies
@@ -55,10 +55,12 @@ jobs:
             dosfstools mtools zstd u-boot-tools
           apt-get upgrade -y
 
-      - uses: actions/checkout@v6
+      - name: Set LFS
+        uses: actions/checkout@v6
         with:
           lfs: true
-      - name: "Initialization: set env variables"
+
+      - name: Set environment variables
         id: set_env_variables
         run: |
           source <(sed -n '/enable programmable completion/,$p' /etc/skel/.bashrc)
@@ -84,7 +86,7 @@ jobs:
           repository: vyos/vyos-build
           path: vyos-build
 
-      - name: Fix vyos-build
+      - name: Patch vyos-build
         env:
           MOK_KEY: ${{ secrets.MOK_KEY }}
           MINISIGN_PRIVATE_KEY: ${{ secrets.MINISIGN_PRIVATE_KEY }}
@@ -470,8 +472,8 @@ jobs:
           retention-days: 30
           compression-level: 0
 
-      - name: Build generic ISO image
-        id: build
+      - name: Build ISO image
+        id: build_iso
         run: |
           cd vyos-build
           source <(sed -n '/enable programmable completion/,$p' /etc/skel/.bashrc)
@@ -505,9 +507,10 @@ jobs:
             generic
           cd build
           # Determine image name and iso file
-          IMAGE_NAME=$(jq --raw-output .artifacts[0] manifest.json | sed -e 's/.iso//')
-          IMAGE_NAME="${IMAGE_NAME/generic/mono}"
+          ARTIFACT="$(jq --raw-output .artifacts[0] manifest.json)"
+          IMAGE_NAME="$(echo ${ARTIFACT} | sed 's/generic/mono/;s/\.iso//')"
           IMAGE_ISO="${IMAGE_NAME}.iso"
+          mv "${ARTIFACT}" "${IMAGE_ISO}"
           echo "mono_image_name=${IMAGE_NAME}" >> $GITHUB_OUTPUT
           echo "mono_image_iso=${IMAGE_ISO}" >> $GITHUB_OUTPUT
           # Cryptographically sign the image
@@ -529,7 +532,7 @@ jobs:
           mkdir -p /tmp/iso-mount
           mount -o loop "${IMAGE_ISO}" /tmp/iso-mount
           truncate -s 4G "${IMAGE_USB}"
-          mkdosfs -F 32 -n VYOSBOOT "${IMAGE_USB}"
+          mkdosfs -F 32 -n MONOBOOT "${IMAGE_USB}"
           mmd   -i "${IMAGE_USB}" ::/live
           mcopy -i "${IMAGE_USB}" /tmp/iso-mount/live/vmlinuz             ::/live/vmlinuz
           mcopy -i "${IMAGE_USB}" /tmp/iso-mount/live/initrd.img          ::/live/initrd.img
@@ -566,20 +569,20 @@ jobs:
 
       - uses: actions/upload-artifact@v7
         with:
-          name: ${{ steps.build.outputs.mono_image_name }}
+          name: ${{ steps.build_iso.outputs.mono_image_name }}
           path: |
             manifest.json
-            ${{ steps.build.outputs.mono_image_iso }}
-            ${{ steps.build.outputs.mono_image_iso }}.minisig
-            ${{ steps.build.outputs.mono_image_usb }}
-            ${{ steps.build.outputs.mono_image_usb }}.minisig
+            ${{ steps.build_iso.outputs.mono_image_iso }}
+            ${{ steps.build_iso.outputs.mono_image_iso }}.minisig
+            ${{ steps.build_iso.outputs.mono_image_usb }}
+            ${{ steps.build_iso.outputs.mono_image_usb }}.minisig
           retention-days: 15
           if-no-files-found: error
           compression-level: 0
 
   publish:
     needs:
-      - build
+      - build_iso
     runs-on: ubuntu-24.04
     permissions:
       contents: write
@@ -604,13 +607,13 @@ jobs:
         run: |
           set -ex
           cd vyos-build
-          git log --since "${{ needs.build.outputs.PREVIOUS_SUCCESS_BUILD_TIMESTAMP }}" --format="%H" --reverse
-          CHANGELOG_COMMIT_VYOS_BUILD=$(git log --since "${{ needs.build.outputs.PREVIOUS_SUCCESS_BUILD_TIMESTAMP }}" --format="%H" --reverse | head -n1)
+          git log --since "${{ needs.build_iso.outputs.PREVIOUS_SUCCESS_BUILD_TIMESTAMP }}" --format="%H" --reverse
+          CHANGELOG_COMMIT_VYOS_BUILD=$(git log --since "${{ needs.build_iso.outputs.PREVIOUS_SUCCESS_BUILD_TIMESTAMP }}" --format="%H" --reverse | head -n1)
           [ -z "$CHANGELOG_COMMIT_VYOS_BUILD" ] && CHANGELOG_COMMIT_VYOS_BUILD="HEAD"
           echo "CHANGELOG_COMMIT_VYOS_BUILD=${CHANGELOG_COMMIT_VYOS_BUILD}" >> $GITHUB_OUTPUT
           cd ../vyos-1x
-          git log --since "${{ needs.build.outputs.PREVIOUS_SUCCESS_BUILD_TIMESTAMP }}" --format="%H" --reverse
-          CHANGELOG_COMMIT_VYOS_1X=$(git log --since "${{ needs.build.outputs.PREVIOUS_SUCCESS_BUILD_TIMESTAMP }}" --format="%H" --reverse | head -n1)
+          git log --since "${{ needs.build_iso.outputs.PREVIOUS_SUCCESS_BUILD_TIMESTAMP }}" --format="%H" --reverse
+          CHANGELOG_COMMIT_VYOS_1X=$(git log --since "${{ needs.build_iso.outputs.PREVIOUS_SUCCESS_BUILD_TIMESTAMP }}" --format="%H" --reverse | head -n1)
           [ -z "$CHANGELOG_COMMIT_VYOS_1X" ] && CHANGELOG_COMMIT_VYOS_1X="HEAD"
           echo "CHANGELOG_COMMIT_VYOS_1X=${CHANGELOG_COMMIT_VYOS_1X}" >> $GITHUB_OUTPUT
 
@@ -663,9 +666,9 @@ jobs:
           json: |
             [
               {
-                "url": "https://github.com/${{ github.repository }}/releases/download/${{ needs.build.outputs.build_version }}/${{ needs.build.outputs.mono_image_iso }}",
-                "version": "${{ needs.build.outputs.build_version }}",
-                "timestamp": "${{ needs.build.outputs.TIMESTAMP }}"
+                "url": "https://github.com/${{ github.repository }}/releases/download/${{ needs.build_iso.outputs.build_version }}/${{ needs.build_iso.outputs.mono_image_iso }}",
+                "version": "${{ needs.build_iso.outputs.build_version }}",
+                "timestamp": "${{ needs.build_iso.outputs.TIMESTAMP }}"
               }
             ]
 
@@ -683,33 +686,23 @@ jobs:
       - name: "Release publishing: create autocommit and tag"
         uses: stefanzweifel/git-auto-commit-action@v7
         with:
-          tagging_message: ${{ needs.build.outputs.build_version }}
-          commit_message: ${{ needs.build.outputs.build_version }}
+          tagging_message: ${{ needs.build_iso.outputs.build_version }}
+          commit_message: ${{ needs.build_iso.outputs.build_version }}
           commit_author: "github-actions[bot] <41898282+github-actions[bot]@users.noreply.github.com>"
 
       - uses: actions/download-artifact@v8
         with:
-          name: ${{ needs.build.outputs.mono_image_name }}
-
-      - uses: actions/download-artifact@v8
-        with:
-          name: vyos-packages
-          path: packages
-      - name: archive packages
-        run: |
-          set -ex
-          tar -cvf vyos-packages.tar packages
-          ls -alh vyos-packages.tar packages
+          name: ${{ needs.build_iso.outputs.mono_image_name }}
 
       - name: "Release publishing: publish release"
         uses: softprops/action-gh-release@v2
         with:
           body_path: CHANGELOG.md
-          tag_name: ${{ needs.build.outputs.build_version }}
+          tag_name: ${{ needs.build_iso.outputs.build_version }}
           fail_on_unmatched_files: true
           files: |
-            ${{ needs.build.outputs.mono_image_iso }}
-            ${{ needs.build.outputs.mono_image_iso }}.minisig
+            ${{ needs.build_iso.outputs.mono_image_iso }}
+            ${{ needs.build_iso.outputs.mono_image_iso }}.minisig
             vyos-*-usb.img.zst
             vyos-*-usb.img.zst.minisig
 
