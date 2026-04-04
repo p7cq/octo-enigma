@@ -116,10 +116,9 @@ jobs:
 
           ### Kernel config
           DEFCONFIG=vyos-build/scripts/package-build/linux-kernel/config/arm64/vyos_defconfig
+
           sed -i '/CONFIG_DEVTMPFS_MOUNT/d'          "$DEFCONFIG"
           sed -i '/CONFIG_CPU_FREQ_DEFAULT_GOV/d'    "$DEFCONFIG"
-          sed -i '/CONFIG_STRICT_DEVMEM/d'           "$DEFCONFIG"
-          sed -i '/CONFIG_IO_STRICT_DEVMEM/d'        "$DEFCONFIG"
           sed -i '/CONFIG_DEBUG_PREEMPT/d'           "$DEFCONFIG"
           printf '%s\n' \
             '# === LS1046A / NXP Layerscape DPAA1 (Mono Gateway DK) ===' \
@@ -142,7 +141,6 @@ jobs:
             'CONFIG_MTD_SPI_NOR=y' \
             'CONFIG_SPI=y' \
             'CONFIG_SPI_FSL_DSPI=y' \
-            'CONFIG_SPI_FSL_QSPI=y' \
             'CONFIG_SPI_FSL_QUADSPI=y' \
             'CONFIG_CDX_BUS=y' \
             '# CONFIG_DEBUG_PREEMPT is not set' \
@@ -152,7 +150,6 @@ jobs:
             '# === SFP support (10G copper/fiber transceivers) ===' \
             'CONFIG_SFP=y' \
             'CONFIG_PHYLINK=y' \
-            'CONFIG_PHY_FSL_LYNX_10G=y' \
             'CONFIG_I2C_MUX=y' \
             'CONFIG_I2C_MUX_PCA954x=y' \
             'CONFIG_AQUANTIA_PHY=y' \
@@ -186,31 +183,7 @@ jobs:
           # cp data/kernel-patches/fsl_usdpaa_mainline.c "$KERNEL_BUILD/"
           # cp data/kernel-patches/patch-phylink.py "$KERNEL_BUILD/"
 
-          # Inject .c file copy before "# Change name of Signing Cert" in build-kernel.sh.
-          # awk '/# Change name of Signing Cert/ {
-          #   print "# Copy USDPAA mainline driver source (too large for unified diff)"
-          #   print "if [ -f \"${CWD}/fsl_usdpaa_mainline.c\" ]; then"
-          #   print "  echo \"I: Copy fsl_usdpaa_mainline.c to drivers/soc/fsl/qbman/\""
-          #   print "  cp \"${CWD}/fsl_usdpaa_mainline.c\" drivers/soc/fsl/qbman/fsl_usdpaa_mainline.c"
-          #   print "fi"
-          #   print ""
-          #   print "# Patch phylink: trust SFP link over PCS in INBAND mode (LS1046A XFI regression)"
-          #   print "PHYLINK_C=$(find . -path \"*/net/phylink.c\" -maxdepth 4 | head -1)"
-          #   print "if [ -n \"$PHYLINK_C\" ] && [ -f \"${CWD}/patch-phylink.py\" ]; then"
-          #   print "  python3 \"${CWD}/patch-phylink.py\" \"$PHYLINK_C\""
-          #   print "fi"
-          # } { print }' "$KERNEL_BUILD/build-kernel.sh" > /tmp/build-kernel-patched.sh
-          # mv /tmp/build-kernel-patched.sh "$KERNEL_BUILD/build-kernel.sh"
-          # chmod +x "$KERNEL_BUILD/build-kernel.sh"
-
-          ### Remove --uefi-secure-boot from grub-install
-          # find "$VYOS1X_BUILD" -name '*.py' -exec \
-          #   grep -l 'uefi.secure.boot' {} \; | \
-          #   xargs -r sed -i "s/'--uefi-secure-boot'[,]\?//g" 2>/dev/null || true
-          # find "$VYOS1X_BUILD" -type f -name "grub.py" -exec \
-          #     grep -l 'uefi-secure-boot' {} \; | xargs -r sed -i "s/--uefi-secure-boot'$/'/g" || true
-
-          ### LSI1046A console
+          # vyos-build
           sed -i 's/ttyAMA0/ttyS0/g' \
             vyos-build/data/live-build-config/hooks/live/01-live-serial.binary \
             vyos-build/data/live-build-config/includes.chroot/opt/vyatta/etc/grub/default-union-grub-entry \
@@ -240,26 +213,9 @@ jobs:
           mkdir -p "$CHROOT/usr/local/bin"
           cp data/scripts/vyos-postinstall "$CHROOT/usr/local/bin/vyos-postinstall"
           chmod +x "$CHROOT/usr/local/bin/vyos-postinstall"
-
-          ### Safety net: run vyos-postinstall on every boot to sync vyos.env
-          # Ensures /boot/vyos.env matches the running image even if the
-          # image_installer.py hook (patch 011) was bypassed. Also handles
-          # one-time U-Boot fw_setenv on first boot. No-op on non-LS1046A.
-          printf '%s\n' \
-            '[Unit]' \
-            'Description=Sync /boot/vyos.env with running VyOS image (LS1046A)' \
-            'After=local-fs.target' \
-            'ConditionPathExists=/proc/device-tree/compatible' \
-            '' \
-            '[Service]' \
-            'Type=oneshot' \
-            'ExecStart=/usr/local/bin/vyos-postinstall' \
-            'RemainAfterExit=yes' \
-            'StandardOutput=journal' \
-            '' \
-            '[Install]' \
-            'WantedBy=multi-user.target' \
-            > "$CHROOT/etc/systemd/system/vyos-postinstall.service"
+          cp data/vyos-postinstall.service "$CHROOT/etc/systemd/system"
+          mkdir -p "$CHROOT/usr/lib/tmpfiles.d"
+          cp data/vyos-postinstall.tmpfiles "$CHROOT/usr/lib/tmpfiles.d/vyos-postinstall.conf"
 
           # fan
           cp data/scripts/fancontrol.conf "$CHROOT/etc/fancontrol"
@@ -267,10 +223,7 @@ jobs:
           chmod +x "$CHROOT/usr/local/bin/fancontrol-setup"
           # Systemd drop-in: run fancontrol-setup before fancontrol starts
           mkdir -p "$CHROOT/etc/systemd/system/fancontrol.service.d"
-          printf '%s\n' \
-            '[Service]' \
-            'ExecStartPre=/usr/local/bin/fancontrol-setup' \
-            > "$CHROOT/etc/systemd/system/fancontrol.service.d/hwmon-setup.conf"
+          cp data/scripts/fancontrol.service.conf "$CHROOT/etc/systemd/system/fancontrol.service.d/hwmon-setup.conf"
 
           ### VPP/DPAA1 rebind: restore kernel netdev ownership when VPP stops
           # When VPP takes a DPAA1 port, vpp.py _dpaa_unbind_ifaces() unbinds
@@ -315,18 +268,7 @@ jobs:
 
           # Install fancontrol package and enable service (chroot hook)
           HOOKS=vyos-build/data/live-build-config/hooks/live
-          cat > "$HOOKS/98-fancontrol.chroot" << 'FANHOOK'
-          #!/bin/bash
-          # Install fancontrol daemon for EMC2305 PWM fan control
-          # Config at /etc/fancontrol maps EMC2305 PWM to core-cluster thermal zone
-          apt-get update -qq && apt-get install -y --no-install-recommends fancontrol libatomic1
-          systemctl enable fancontrol.service
-          # Enable vyos-postinstall (writes /boot/vyos.env on install/upgrade).
-          # Must be done inside chroot hook — ln -sf in includes.chroot gets
-          # dereferenced by live-build, producing empty files instead of symlinks.
-          # systemctl enable vyos-postinstall.service
-          apt-get clean
-          FANHOOK
+          cp data/scripts/98-fancontrol.chroot "$HOOKS/98-fancontrol.chroot"
           chmod +x "$HOOKS/98-fancontrol.chroot"
 
           ### Boot optimization: mask unnecessary services for LS1046A
@@ -335,21 +277,7 @@ jobs:
           # IMPORTANT: ln -sf /dev/null in includes.chroot gets converted to empty
           # files by live-build (symlinks to absolute paths outside chroot are
           # dereferenced). We use a chroot hook to create proper symlinks instead.
-          cat > "$HOOKS/99-mask-services.chroot" << 'MASKHOOK'
-          #!/bin/bash
-          # Mask kexec services: prevents kexec preloading kernel at boot
-          # (DPAA1/SFP/I2C needs full U-Boot re-init on reboot)
-          # Both SysV init scripts AND systemd units must be masked
-          ln -sf /dev/null /etc/systemd/system/kexec-load.service
-          ln -sf /dev/null /etc/systemd/system/kexec.service
-          # Remove SysV init scripts to prevent systemd-sysv-generator from
-          # creating auto-generated units that bypass our systemd masks
-          rm -f /etc/init.d/kexec-load /etc/init.d/kexec
-          # ACPI daemon is useless on ARM64/DeviceTree platforms
-          ln -sf /dev/null /etc/systemd/system/acpid.service
-          ln -sf /dev/null /etc/systemd/system/acpid.socket
-          ln -sf /dev/null /etc/systemd/system/acpid.path
-          MASKHOOK
+          cp data/scripts/99-mask-services.chroot "$HOOKS/99-mask-services.chroot"
           chmod +x "$HOOKS/99-mask-services.chroot"
 
           ### Ethernet port remapping: FMan MAC → physical port position
