@@ -101,7 +101,7 @@ jobs:
           # patches applied to the cloned repo. We use pre_build_hook to apply patches
           # AFTER checkout, before dpkg-buildpackage.
           VYOS1X=vyos-build/scripts/package-build/vyos-1x
-          cat > "$VYOS1X_BUILD/package.toml" <<'EOF'
+          cat > "$VYOS1X/package.toml" <<'EOF'
           [[packages]]
           name = "vyos-1x"
           commit_id = "mono-gw"
