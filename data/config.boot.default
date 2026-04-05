@@ -3,7 +3,7 @@ system {
     login {
         banner {
             pre-login ""
-            post-login "\n:: VyOS Mono Gateway (NXP LS1046A - ARM64) ::\n"
+            post-login "\n:: VyOS Mono Gateway (NXP LS1046A - ARM64) ::"
         }
         user vyos {
             authentication {
