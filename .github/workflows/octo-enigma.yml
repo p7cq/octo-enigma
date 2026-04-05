@@ -20,6 +20,8 @@ env:
   DEBIAN_MIRROR: http://deb.debian.org/debian/
   DEBIAN_SECURITY_MIRROR: http://deb.debian.org/debian-security
   VYOS_MIRROR: https://packages.vyos.net/repositories/current/
+  DT_S: mono.dts
+  DT_B: mono.dtb
 
 jobs:
   build_iso:
@@ -197,11 +199,13 @@ jobs:
           # add minisign pubkey
           cp data/octo-enigma.minisign.pub vyos-build/data/live-build-config/includes.chroot/usr/share/vyos/keys/
           mkdir -p vyos-build/data/live-build-config/includes.binary
-          cp data/dtb/mono-gw.dtb vyos-build/data/live-build-config/includes.binary/mono-gw.dtb
+          # cp data/dtb/mono-gw.dtb vyos-build/data/live-build-config/includes.binary/mono-gw.dtb
+          cp "data/dt/$DT_B" "vyos-build/data/live-build-config/includes.binary/$DT_B"
 
           CHROOT=vyos-build/data/live-build-config/includes.chroot
           mkdir -p "$CHROOT/boot"
-          cp data/dtb/mono-gw.dtb "$CHROOT/boot"
+          # cp data/dtb/mono-gw.dtb "$CHROOT/boot"
+          cp "data/dt/$DT_B" "$CHROOT/boot"
 
           # fw
           cp data/scripts/fw_env.config "$CHROOT/etc/fw_env.config"
@@ -318,19 +322,19 @@ jobs:
               if [ -n "$KSRC" ] && [ -d "$KSRC/arch/arm64/boot/dts/freescale" ]; then
                 echo "### Building Mono Gateway DTB from kernel source"
                 # Copy our custom DTS into the kernel tree
-                cp "$GITHUB_WORKSPACE/data/dtb/mono-gateway-dk.dts" \
-                   "$KSRC/arch/arm64/boot/dts/freescale/mono-gateway-dk.dts"
+                cp "$GITHUB_WORKSPACE/data/dt/$DT_S" \
+                   "$KSRC/arch/arm64/boot/dts/freescale/$DT_S"
                 # Build it using the kernel's DTS infrastructure
-                make -C "$KSRC" freescale/mono-gateway-dk.dtb 2>&1 | tail -10 || true
-                MONO_DTB="$KSRC/arch/arm64/boot/dts/freescale/mono-gateway-dk.dtb"
+                make -C "$KSRC" "freescale/$DT_B" 2>&1 | tail -10 || true
+                MONO_DTB="$KSRC/arch/arm64/boot/dts/freescale/$DT_B"
                 if [ -f "$MONO_DTB" ]; then
                   # Replace the SDK-extracted DTB with our mainline-compiled one
-                  cp "$MONO_DTB" "$GITHUB_WORKSPACE/vyos-build/data/live-build-config/includes.binary/mono-gw.dtb"
+                  cp "$MONO_DTB" "$GITHUB_WORKSPACE/vyos-build/data/live-build-config/includes.binary/$DT_B"
                   # Also copy into squashfs (/boot/) so install_image() auto-copies it
-                  cp "$MONO_DTB" "$GITHUB_WORKSPACE/vyos-build/data/live-build-config/includes.chroot/boot/mono-gw.dtb"
+                  cp "$MONO_DTB" "$GITHUB_WORKSPACE/vyos-build/data/live-build-config/includes.chroot/boot/$DT_B"
                   echo "### Mono Gateway DTB compiled: $(stat -c '%s bytes' "$MONO_DTB")"
                 else
-                  echo "WARNING: mono-gateway-dk.dtb build failed, keeping SDK DTB"
+                  echo "WARNING: $DT_S build failed, keeping SDK DTB"
                   ls "$KSRC/arch/arm64/boot/dts/freescale/"*.dtb 2>/dev/null | head -5 || true
                 fi
               fi
@@ -408,11 +412,11 @@ jobs:
           set -ex
 
           ### Copy mainline RDB DTB if built during kernel step
-          if [ -f "$GITHUB_WORKSPACE/data/dtb/fsl-ls1046a-rdb.dtb" ]; then
-            cp "$GITHUB_WORKSPACE/data/dtb/fsl-ls1046a-rdb.dtb" \
-              data/live-build-config/includes.binary/fsl-ls1046a-rdb.dtb
-            echo "### Mainline RDB DTB included in ISO"
-          fi
+          # if [ -f "$GITHUB_WORKSPACE/data/dtb/fsl-ls1046a-rdb.dtb" ]; then
+          #   cp "$GITHUB_WORKSPACE/data/dtb/fsl-ls1046a-rdb.dtb" \
+          #     data/live-build-config/includes.binary/fsl-ls1046a-rdb.dtb
+          #   echo "### Mainline RDB DTB included in ISO"
+          # fi
 
           rm -rf packages/linux-headers-*
 
@@ -465,7 +469,8 @@ jobs:
           mcopy -i "${IMAGE_USB}" /tmp/iso-mount/live/vmlinuz             ::/live/vmlinuz
           mcopy -i "${IMAGE_USB}" /tmp/iso-mount/live/initrd.img          ::/live/initrd.img
           mcopy -i "${IMAGE_USB}" /tmp/iso-mount/live/filesystem.squashfs ::/live/filesystem.squashfs
-          mcopy -i "${IMAGE_USB}" $GITHUB_WORKSPACE/data/dtb/mono-gw.dtb  ::mono-gw.dtb
+          mcopy -i "${IMAGE_USB}" "$GITHUB_WORKSPACE/data/dt/$DT_B"       ::"$DT_B"
+          # mcopy -i "${IMAGE_USB}" $GITHUB_WORKSPACE/data/dtb/mono-gw.dtb  ::mono-gw.dtb
 
           # Generate U-Boot boot script (boot.scr) — loads kernel/DTB/initrd from USB FAT32
           # and boots directly. Does NOT modify U-Boot environment or SPI flash.
