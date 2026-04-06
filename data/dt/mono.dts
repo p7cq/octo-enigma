@@ -7,6 +7,12 @@
 	#size-cells = <0x02>;
 	model = "Mono Gateway Development Kit";
 
+	psci {
+		status = "okay";
+		method = "smc";
+		compatible = "arm,psci-1.0", "arm,psci-0.2";
+	};
+
 	aliases {
 		crypto = "/soc/crypto@1700000";
 		fman0 = "/soc/fman@1a00000";
@@ -31,6 +37,7 @@
 		#size-cells = <0x00>;
 
 		cpu@0 {
+			enable-method = "psci";
 			device_type = "cpu";
 			compatible = "arm,cortex-a72";
 			reg = <0x00>;
@@ -42,6 +49,7 @@
 		};
 
 		cpu@1 {
+			enable-method = "psci";
 			device_type = "cpu";
 			compatible = "arm,cortex-a72";
 			reg = <0x01>;
@@ -53,6 +61,7 @@
 		};
 
 		cpu@2 {
+			enable-method = "psci";
 			device_type = "cpu";
 			compatible = "arm,cortex-a72";
 			reg = <0x02>;
@@ -64,6 +73,7 @@
 		};
 
 		cpu@3 {
+			enable-method = "psci";
 			device_type = "cpu";
 			compatible = "arm,cortex-a72";
 			reg = <0x03>;
@@ -509,6 +519,7 @@
 		};
 
 		mmc@1560000 {
+			clock-frequency = <0x11e1a300>;
 			compatible = "fsl,ls1046a-esdhc", "fsl,esdhc";
 			reg = <0x00 0x1560000 0x00 0x10000>;
 			interrupts = <0x00 0x3e 0x04>;
@@ -577,6 +588,7 @@
 		};
 
 		qman@1880000 {
+			clock-frequency = <0x11e1a300>;
 			compatible = "fsl,qman";
 			reg = <0x00 0x1880000 0x00 0x10000>;
 			interrupts = <0x00 0x2d 0x04>;
@@ -1127,6 +1139,7 @@
 		};
 
 		serial@21c0500 {
+			clock-frequency = <0x11e1a300>;
 			compatible = "fsl,ns16550", "ns16550a";
 			reg = <0x00 0x21c0500 0x00 0x100>;
 			interrupts = <0x00 0x36 0x04>;
@@ -1136,6 +1149,7 @@
 		};
 
 		serial@21c0600 {
+			clock-frequency = <0x11e1a300>;
 			compatible = "fsl,ns16550", "ns16550a";
 			reg = <0x00 0x21c0600 0x00 0x100>;
 			interrupts = <0x00 0x36 0x04>;
@@ -1151,6 +1165,7 @@
 		};
 
 		serial@21d0500 {
+			clock-frequency = <0x11e1a300>;
 			compatible = "fsl,ns16550", "ns16550a";
 			reg = <0x00 0x21d0500 0x00 0x100>;
 			interrupts = <0x00 0x37 0x04>;
@@ -1160,6 +1175,7 @@
 		};
 
 		serial@21d0600 {
+			clock-frequency = <0x11e1a300>;
 			compatible = "fsl,ns16550", "ns16550a";
 			reg = <0x00 0x21d0600 0x00 0x100>;
 			interrupts = <0x00 0x37 0x04>;
