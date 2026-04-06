@@ -181,6 +181,7 @@ jobs:
           mkdir -p "$KERNEL_PATCHES"
           cp data/kernel-patches/4002-hwmon-ina2xx-add-INA234-support.patch "$KERNEL_PATCHES/"
           cp data/kernel-patches/4003-sfp-rollball-phylink-einval-fallback.patch "$KERNEL_PATCHES/"
+          cp data/kernel-patches/4004-swphy-support-10g-fixed-link-speed.patch "$KERNEL_PATCHES/"
           # cp data/kernel-patches/9001-usdpaa-bman-qman-exports-and-driver.patch "$KERNEL_PATCHES/"
           # cp data/kernel-patches/fsl_usdpaa_mainline.c "$KERNEL_BUILD/"
           # cp data/kernel-patches/patch-phylink.py "$KERNEL_BUILD/"

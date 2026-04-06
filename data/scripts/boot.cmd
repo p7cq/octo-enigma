@@ -10,9 +10,6 @@
 # CRITICAL: Every setenv line must be <500 chars. U-Boot CONFIG_SYS_CBSIZE
 # on LS1046A may be as low as 512 bytes.
 
-echo "=== VyOS LS1046A USB Live Boot ==="
-echo ""
-
 # --- Load kernel, DTB, initrd from FAT32 USB ---
 
 usb start
@@ -26,5 +23,4 @@ setenv bootargs console=ttyS0,115200 earlycon=uart8250,mmio,0x21c0500 boot=live 
 
 # --- Boot ---
 
-echo "Booting VyOS live from USB..."
 booti ${kernel_addr_r} ${ramdisk_addr_r}:${filesize} ${fdt_addr_r}
