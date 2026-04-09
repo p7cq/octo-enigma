@@ -1,7 +1,4 @@
 ## vyos-1x
-- firewall: T8281: Normalize network prefixes in rule configuration
-   - PR: vyos/vyos-1x#5103
-
-
+- no changes
 ## vyos-build
 - no changes
