@@ -291,6 +291,7 @@ jobs:
           # Fix: udev rule calls fman-port-name script which reads each interface's
           # device-tree node to determine the correct ethN name. A .link file
           # prevents systemd from overriding the udev-assigned name.
+
           cp data/scripts/fman-port-name "$CHROOT/usr/local/bin/fman-port-name"
           chmod +x "$CHROOT/usr/local/bin/fman-port-name"
           mkdir -p "$CHROOT/etc/udev/rules.d"
