@@ -108,6 +108,7 @@ jobs:
           name = "vyos-1x"
           commit_id = "mono-gw"
           scm_url = "https://github.com/p7cq/vyos-1x.git"
+          pre_build_hook = "sed -i '/openvpn-dco,/d' debian/control"
           EOF
 
           ### vyos-build
