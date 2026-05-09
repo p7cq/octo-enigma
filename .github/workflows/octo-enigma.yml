@@ -618,12 +618,52 @@ jobs:
           # git pull --rebase || true
           # cp /tmp/version.json.new version.json
 
-      - name: "Release publishing: create autocommit and tag"
-        uses: stefanzweifel/git-auto-commit-action@v7
-        with:
-          tagging_message: ${{ needs.build_iso.outputs.build_version }}
-          commit_message: ${{ needs.build_iso.outputs.build_version }}
-          commit_author: "github-actions[bot] <41898282+github-actions[bot]@users.noreply.github.com>"
+      - name: "Release publishing: create verified commit and tag"
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          BUILD_VERSION: ${{ needs.build_iso.outputs.build_version }}
+          REPO: ${{ github.repository }}
+          BRANCH: ${{ github.ref_name }}
+        run: |
+          set -ex
+
+          HEAD_SHA=$(git rev-parse HEAD)
+          VERSION_B64=$(base64 -w0 version.json)
+          CHANGELOG_B64=$(base64 -w0 CHANGELOG.md)
+
+          # Build GraphQL payload
+          jq -n \
+            --arg repo   "$REPO" \
+            --arg branch "$BRANCH" \
+            --arg head   "$HEAD_SHA" \
+            --arg msg    "$BUILD_VERSION" \
+            --arg vjson  "$VERSION_B64" \
+            --arg clog   "$CHANGELOG_B64" \
+            '{
+              query: "mutation($input: CreateCommitOnBranchInput!) { createCommitOnBranch(input: $input) { commit { oid } } }",
+              variables: {
+                input: {
+                  branch: { repositoryNameWithOwner: $repo, branchName: $branch },
+                  expectedHeadOid: $head,
+                  message: { headline: $msg },
+                  fileChanges: {
+                    additions: [
+                      { path: "version.json",  contents: $vjson },
+                      { path: "CHANGELOG.md",  contents: $clog }
+                    ]
+                  }
+                }
+              }
+            }' > /tmp/commit-payload.json
+
+          # Create verified commit (signed automatically by GitHub when using GITHUB_TOKEN)
+          NEW_SHA=$(gh api graphql --input /tmp/commit-payload.json \
+            --jq '.data.createCommitOnBranch.commit.oid')
+
+          # Create lightweight tag pointing to the new commit
+          gh api -X POST "/repos/$REPO/git/refs" \
+            -f ref="refs/tags/$BUILD_VERSION" \
+            -f sha="$NEW_SHA"
 
       - uses: actions/download-artifact@v8
         with:
